@@ -24,7 +24,11 @@ from loguru import logger
 from .config import DATA_DIR, METRO_CODES
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "realprice-fast/0.1 (https://github.com/legstrong77-maker; contact: legstrong77@gmail.com)"
+# Nominatim 政策要求帶 User-Agent + 聯絡方式；建議自己跑時設環境變數覆寫
+USER_AGENT = os.environ.get(
+    "REALPRICE_USER_AGENT",
+    "realprice-fast/0.1 (Taiwan real-price aggregator; please set REALPRICE_USER_AGENT)",
+)
 CACHE_PATH = DATA_DIR / "geocode_cache.json"
 RATE_LIMIT_SEC = 1.05  # 守住 1 req/s 規範
 INSECURE_TLS = os.environ.get("REALPRICE_INSECURE_TLS", "").lower() in ("1", "true", "yes")
