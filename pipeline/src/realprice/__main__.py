@@ -140,6 +140,63 @@ def main(argv: list[str] | None = None) -> None:
                        help="本次最多查多少個（避免一次跑太久）")
     p_geo.set_defaults(func=cmd_geocode)
 
+    def cmd_addr_geocode(args2):
+        from realprice.addr_geocode import (
+            collect_addresses, geocode_addresses, apply_cache_to_recent_files,
+        )
+        if args2.apply_only:
+            apply_cache_to_recent_files()
+            return
+        candidates = collect_addresses()
+        logger.info(f"recent files 蒐集到 {len(candidates)} 個唯一地址")
+        geocode_addresses(
+            candidates,
+            max_count=args2.max_count,
+            only_with_road_cache=args2.only_road_cached,
+        )
+        if args2.apply_after:
+            apply_cache_to_recent_files()
+
+    def cmd_osm_build(_args2):
+        """從 OSM Taiwan PBF 抽門牌節點 → 建本地 SQLite 庫（一次性，要先 download PBF）。"""
+        from realprice.osm_addr import build_db, OSM_PBF_PATH, ADDR_DB_PATH
+        if not OSM_PBF_PATH.exists():
+            logger.error(
+                f"先抓 PBF：\n"
+                f"  curl -sSL --create-dirs -o {OSM_PBF_PATH} "
+                f"https://download.geofabrik.de/asia/taiwan-latest.osm.pbf"
+            )
+            sys.exit(1)
+        n = build_db()
+        logger.info(f"完成，{n:,} 筆寫入 {ADDR_DB_PATH}")
+
+    p_osm = sub.add_parser("osm-build",
+                            help="從 OSM Taiwan PBF 建本地門牌庫（5M+ 筆，~10 分鐘）")
+    p_osm.set_defaults(func=cmd_osm_build)
+
+    def cmd_osm_apply(args2):
+        """用 OSM 本地庫 + 既有 Nominatim cache 一起套到 recent JSON。"""
+        from realprice.addr_geocode import apply_cache_to_recent_files
+        apply_cache_to_recent_files(use_osm=not args2.no_osm)
+
+    p_oapp = sub.add_parser("osm-apply",
+                             help="把 cache + OSM 本地庫的座標套到 recent/*.json（不查 Nominatim）")
+    p_oapp.add_argument("--no-osm", action="store_true",
+                        help="只套用 Nominatim cache，跳過 OSM（等同舊行為）")
+    p_oapp.set_defaults(func=cmd_osm_apply)
+
+    p_addr = sub.add_parser("addr-geocode",
+                             help="逐筆地址 geocode → addr cache（用 OSM Nominatim，1 req/s）")
+    p_addr.add_argument("--max-count", type=int, default=None,
+                        help="本次最多查多少個（限縮 scope，避免一次跑太久）")
+    p_addr.add_argument("--only-road-cached", action="store_true",
+                        help="只查路段已被 geocode 過的地址（提升命中率，砍掉偏鄉路）")
+    p_addr.add_argument("--apply-after", action="store_true",
+                        help="跑完之後立刻把座標套用到 web/public/data/recent/*.json")
+    p_addr.add_argument("--apply-only", action="store_true",
+                        help="不查新的，只把現有 cache 套到 recent 檔上")
+    p_addr.set_defaults(func=cmd_addr_geocode)
+
     args = p.parse_args(argv)
     args.func(args)
 

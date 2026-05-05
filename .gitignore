@@ -7,6 +7,11 @@ pipeline/**/*.pyc
 pipeline/_inspect*.py
 
 # 保留 data/geocode_cache.json — 重建成本高（每旬只增量）
+# 保留 data/addr_geocode_cache.json — Nominatim 跑得慢，要保留
+
+# OSM 本地門牌庫（PBF ~309 MB + SQLite ~819 MB）— 太大，不入庫
+# 重建：python -m realprice osm-build（先 curl PBF 到 data/osm/，見 osm_addr.PBF_URL）
+data/osm/
 
 # web build 產物
 web/node_modules/
