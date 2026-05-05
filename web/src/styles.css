@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply bg-ink-50 text-ink-900;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  body {
+    @apply min-h-screen;
+    background:
+      radial-gradient(60% 40% at 100% 0%, rgba(29, 78, 216, 0.04) 0%, transparent 60%),
+      radial-gradient(40% 30% at 0% 100%, rgba(120, 113, 108, 0.05) 0%, transparent 60%),
+      #fafaf9;
+  }
+
+  h1, h2, h3 { @apply font-serif tracking-tightish; }
+
+  /* numbers everywhere should look tabular */
+  .num, table td, table th {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .stat-num { @apply font-mono tabular-nums tracking-tight; }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-200
+           bg-white px-2.5 py-0.5 text-xs font-medium text-ink-600;
+  }
+  .panel {
+    @apply rounded-lg border border-ink-200 bg-white;
+  }
+  .panel-padded {
+    @apply panel p-5;
+  }
+  .panel-head {
+    @apply flex items-center justify-between border-b border-ink-200 px-5 py-3;
+  }
+  .label {
+    @apply text-[11px] uppercase tracking-[0.12em] text-ink-500 font-medium;
+  }
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-ink-200
+           bg-white px-3 py-1.5 text-sm text-ink-700 transition
+           hover:border-ink-300 hover:bg-ink-100;
+  }
+  .btn-active {
+    @apply !border-ink-900 !bg-ink-900 !text-white;
+  }
+  .table-clean th {
+    @apply text-left text-[11px] uppercase tracking-[0.1em] text-ink-500 font-medium
+           border-b border-ink-200 px-3 py-2 bg-ink-50;
+  }
+  .table-clean td {
+    @apply border-b border-ink-100 px-3 py-2 text-sm text-ink-800;
+  }
+  .table-clean tbody tr:hover { @apply bg-ink-50; }
+  .num-up   { @apply text-up font-mono; }
+  .num-down { @apply text-down font-mono; }
+}
+
+/* Recharts overrides — 讓圖更編輯部 */
+.recharts-cartesian-grid line { stroke: #e7e5e4; stroke-dasharray: 2 3; }
+.recharts-cartesian-axis-tick text { fill: #78716c; font-size: 11px; }
+.recharts-tooltip-wrapper { outline: none; }

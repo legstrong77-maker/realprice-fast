@@ -1,0 +1,26 @@
+# pipeline 中間產物（重建成本低）
+data/raw/
+data/parquet/
+data/snapshots/
+pipeline/**/__pycache__/
+pipeline/**/*.pyc
+pipeline/_inspect*.py
+
+# 保留 data/geocode_cache.json — 重建成本高（每旬只增量）
+
+# web build 產物
+web/node_modules/
+web/dist/
+web/.vite/
+web/tsconfig.tsbuildinfo
+
+# 保留 web/public/data/ — 部署到 Cloudflare Pages 直接用，不用伺服器端產生
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+*.swp
