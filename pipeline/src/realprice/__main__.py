@@ -65,6 +65,13 @@ def cmd_latest(args) -> None:
     cmd_all(args)
 
 
+def cmd_pois(_args) -> None:
+    """從 OSM Overpass 抓 POI（捷運站、學校、嫌惡設施）→ snapshots/poi/*.json。"""
+    from realprice.pois import build_pois
+    counts = build_pois()
+    logger.info(f"POI 總計：{counts}")
+
+
 def cmd_geocode(args) -> None:
     """掃 Parquet 中所有路段 → 補進 geocode_cache。"""
     import duckdb
@@ -122,6 +129,9 @@ def main(argv: list[str] | None = None) -> None:
     p_latest.add_argument("--since", type=int, default=112)
     p_latest.add_argument("--season", default=None)
     p_latest.set_defaults(func=cmd_latest)
+
+    p_poi = sub.add_parser("pois", help="從 OSM Overpass 抓全台 POI（捷運站、學校、嫌惡設施）")
+    p_poi.set_defaults(func=cmd_pois)
 
     p_geo = sub.add_parser("geocode", help="把路段轉成 (lat,lng) 寫入 cache（用 OSM Nominatim，1 req/s）")
     p_geo.add_argument("--top-per-county", type=int, default=100,

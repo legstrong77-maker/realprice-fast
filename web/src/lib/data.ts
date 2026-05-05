@@ -204,4 +204,13 @@ export const data = {
   underpriced: (cc: string) => fetchJSON<UnderpricedRow[]>(`/underpriced/${cc}.json`),
   roadHistory: (cc: string) =>
                   fetchJSON<Record<string, RoadHistoryDeal[]>>(`/road-history/${cc}.json`),
+  pois:        (kind: "stations" | "schools" | "nimby") =>
+                  fetchJSON<POI[]>(`/poi/${kind}.json`),
 };
+
+export interface POI {
+  name: string;
+  lat: number;
+  lng: number;
+  subtype: string;
+}

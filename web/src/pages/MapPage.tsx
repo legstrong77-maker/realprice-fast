@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
-  data, type DealKind, type HeatmapRow, type Meta, type RoadRow,
+  data, type DealKind, type HeatmapRow, type Meta, type RoadRow, type POI,
 } from "../lib/data";
 import { fmt, fmtPing, fmtWan } from "../lib/format";
 import { getCentroid } from "../lib/districtCentroids";
@@ -43,7 +43,21 @@ const ROAD_ZOOM_THRESHOLD = 13;   // ≥ 13 顯示路段點
 type Picked =
   | { kind: "district"; row: HeatmapRow }
   | { kind: "road"; row: RoadRow }
+  | { kind: "poi"; row: POI; layer: PoiLayer }
   | null;
+
+type PoiLayer = "stations" | "schools" | "nimby";
+
+const POI_STYLE: Record<PoiLayer, {
+  label: string;
+  color: string;
+  icon: string;
+  source: string;
+}> = {
+  stations: { label: "車站", color: "#1d4ed8", icon: "🚇", source: "stations" },
+  schools:  { label: "學校", color: "#047857", icon: "🎓", source: "schools" },
+  nimby:    { label: "嫌惡設施", color: "#b91c1c", icon: "⚠", source: "nimby" },
+};
 
 export default function MapPage({ meta }: { meta: Meta | null }) {
   const [cc, setCc] = useState("a");
@@ -53,9 +67,18 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   const [picked, setPicked] = useState<Picked>(null);
   const [zoom, setZoom] = useState(COUNTY_VIEW.a.zoom);
 
+  // POI 圖層
+  const [pois, setPois] = useState<Record<PoiLayer, POI[]>>({
+    stations: [], schools: [], nimby: [],
+  });
+  const [poiOn, setPoiOn] = useState<Record<PoiLayer, boolean>>({
+    stations: false, schools: false, nimby: false,
+  });
+
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const poiLayerInitRef = useRef(false);
 
   const counties = meta?.counties ?? [];
 
@@ -65,6 +88,15 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     data.heatmap(cc, dk).then(setHeatmap).catch(() => setHeatmap([]));
     data.roads(cc, dk).then(setRoads).catch(() => setRoads([]));
   }, [cc, dk]);
+
+  // 抓 POI（懶載入：toggle 開了才抓）
+  useEffect(() => {
+    (Object.keys(poiOn) as PoiLayer[]).forEach((k) => {
+      if (poiOn[k] && pois[k].length === 0) {
+        data.pois(k).then((rows) => setPois((p) => ({ ...p, [k]: rows }))).catch(() => {});
+      }
+    });
+  }, [poiOn]);
 
   // 初始化地圖
   useEffect(() => {
@@ -90,9 +122,91 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     });
     map.addControl(new maplibregl.NavigationControl({}), "top-right");
     map.on("zoom", () => setZoom(map.getZoom()));
+    // 等 style 載完再加 POI source/layer
+    map.on("load", () => {
+      (Object.keys(POI_STYLE) as PoiLayer[]).forEach((k) => {
+        const style = POI_STYLE[k];
+        map.addSource(style.source, {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id: `${style.source}-circle`,
+          type: "circle",
+          source: style.source,
+          paint: {
+            "circle-radius": [
+              "interpolate", ["linear"], ["zoom"],
+              9, 3,
+              13, 6,
+              16, 9,
+            ],
+            "circle-color": style.color,
+            "circle-opacity": 0.85,
+            "circle-stroke-color": "#fff",
+            "circle-stroke-width": 1.5,
+          },
+        });
+        map.addLayer({
+          id: `${style.source}-label`,
+          type: "symbol",
+          source: style.source,
+          minzoom: 14,
+          layout: {
+            "text-field": ["get", "name"],
+            "text-size": 11,
+            "text-offset": [0, 1.1],
+            "text-anchor": "top",
+            "text-font": ["Noto Sans Regular"],
+            "text-allow-overlap": false,
+          },
+          paint: {
+            "text-color": style.color,
+            "text-halo-color": "#fff",
+            "text-halo-width": 1.6,
+          },
+        });
+        // click handler
+        map.on("click", `${style.source}-circle`, (e: any) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          setPicked({
+            kind: "poi",
+            layer: k,
+            row: {
+              name: f.properties.name,
+              subtype: f.properties.subtype,
+              lat: f.geometry.coordinates[1],
+              lng: f.geometry.coordinates[0],
+            },
+          });
+        });
+        map.on("mouseenter", `${style.source}-circle`, () => map.getCanvas().style.cursor = "pointer");
+        map.on("mouseleave", `${style.source}-circle`, () => map.getCanvas().style.cursor = "");
+      });
+      poiLayerInitRef.current = true;
+    });
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; };
   }, []);
+
+  // 同步 POI 資料 + 顯示狀態 → map source / layer visibility
+  useEffect(() => {
+    const m = mapRef.current; if (!m || !poiLayerInitRef.current) return;
+    (Object.keys(POI_STYLE) as PoiLayer[]).forEach((k) => {
+      const style = POI_STYLE[k];
+      const features = poiOn[k] ? pois[k].map(p => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
+        properties: { name: p.name, subtype: p.subtype },
+      })) : [];
+      const src = m.getSource(style.source) as maplibregl.GeoJSONSource | undefined;
+      if (src) src.setData({ type: "FeatureCollection", features });
+      const vis = poiOn[k] ? "visible" : "none";
+      if (m.getLayer(`${style.source}-circle`)) m.setLayoutProperty(`${style.source}-circle`, "visibility", vis);
+      if (m.getLayer(`${style.source}-label`)) m.setLayoutProperty(`${style.source}-label`, "visibility", vis);
+    });
+  }, [pois, poiOn, zoom]);
 
   // 切縣市時飛過去
   useEffect(() => {
@@ -233,29 +347,52 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       </section>
 
       {/* 控制 + 圖例 */}
-      <div className="panel flex flex-wrap items-center gap-3 p-4">
-        <select
-          className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-sm"
-          value={cc}
-          onChange={(e) => setCc(e.target.value)}
-        >
-          {counties.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
-        </select>
-        <DealKindTabs value={dk} onChange={setDk} />
+      <div className="panel p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-sm"
+            value={cc}
+            onChange={(e) => setCc(e.target.value)}
+          >
+            {counties.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+          </select>
+          <DealKindTabs value={dk} onChange={setDk} />
 
-        <div className="ml-auto flex items-center gap-3 text-xs text-ink-500">
-          <span className="pill">
-            <span className="w-1.5 h-1.5 rounded-full bg-ink-900" />
-            zoom <span className="stat-num text-ink-900">{zoom.toFixed(1)}</span>
-            <span className="text-ink-400">·</span>
-            {showRoads
-              ? <span className="text-accent">路段層 ({visibleRoads}/{totalRoads})</span>
-              : <span>鄉鎮層</span>}
+          <div className="ml-auto flex items-center gap-3 text-xs text-ink-500">
+            <span className="pill">
+              <span className="w-1.5 h-1.5 rounded-full bg-ink-900" />
+              zoom <span className="stat-num text-ink-900">{zoom.toFixed(1)}</span>
+              <span className="text-ink-400">·</span>
+              {showRoads
+                ? <span className="text-accent">路段層 ({visibleRoads}/{totalRoads})</span>
+                : <span>鄉鎮層</span>}
+            </span>
+            <span>低</span>
+            <span className="inline-block h-3 w-32 rounded-full"
+                  style={{ background: "linear-gradient(90deg, #0e7490 0%, #d97706 50%, #b91c1c 100%)" }} />
+            <span>高</span>
+          </div>
+        </div>
+
+        {/* 圖層切換 */}
+        <div className="flex flex-wrap items-center gap-2 text-sm pt-2 border-t border-ink-100">
+          <span className="text-xs text-ink-500 mr-2">圖層：</span>
+          {(Object.keys(POI_STYLE) as PoiLayer[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => setPoiOn(s => ({ ...s, [k]: !s[k] }))}
+              className={`btn !text-xs !py-1 !px-2.5 ${poiOn[k] ? "btn-active" : ""}`}
+              style={poiOn[k] ? { background: POI_STYLE[k].color, borderColor: POI_STYLE[k].color } : undefined}
+            >
+              {POI_STYLE[k].icon} {POI_STYLE[k].label}
+              {poiOn[k] && pois[k].length > 0 && (
+                <span className="ml-1 opacity-80 stat-num">({pois[k].length})</span>
+              )}
+            </button>
+          ))}
+          <span className="text-[11px] text-ink-400 ml-auto">
+            zoom ≥ 14 顯示文字標籤
           </span>
-          <span>低</span>
-          <span className="inline-block h-3 w-32 rounded-full"
-                style={{ background: "linear-gradient(90deg, #0e7490 0%, #d97706 50%, #b91c1c 100%)" }} />
-          <span>高</span>
         </div>
       </div>
 
@@ -308,6 +445,48 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
               </dl>
             </div>
           )}
+          {picked?.kind === "poi" && (() => {
+            const style = POI_STYLE[picked.layer];
+            // 計算這個 POI 800m 內路段的中位單價
+            const R = 0.008; // ~800m 在 lat/lng 上
+            const nearbyRoads = roads.filter(r =>
+              r.lat != null && r.lng != null &&
+              Math.abs(r.lat - picked.row.lat) < R &&
+              Math.abs(r.lng - picked.row.lng) < R
+            );
+            const prices = nearbyRoads.map(r => r.median_unit_price_ping ?? 0).filter(Boolean);
+            const med = prices.length ? prices.sort((a, b) => a - b)[Math.floor(prices.length / 2)] : null;
+            return (
+              <div>
+                <div className="label" style={{ color: style.color }}>{style.label} · {picked.row.subtype}</div>
+                <h3 className="mt-1 font-serif text-2xl text-ink-900">{style.icon} {picked.row.name}</h3>
+                <dl className="mt-4 space-y-3 text-sm">
+                  <KV k="座標" v={`${picked.row.lat.toFixed(4)}, ${picked.row.lng.toFixed(4)}`} />
+                  <KV k="800m 內路段數" v={`${nearbyRoads.length} 條`} />
+                  <KV
+                    k="800m 內中位價"
+                    v={med ? `${(med / 10000).toFixed(1)} 萬/坪` : "—"}
+                    highlight={!!med}
+                  />
+                </dl>
+                {nearbyRoads.length > 0 && (
+                  <div className="mt-4">
+                    <div className="label mb-2">附近路段</div>
+                    <div className="space-y-1 max-h-[180px] overflow-y-auto">
+                      {nearbyRoads.slice(0, 8).map(r => (
+                        <div key={r.road} className="text-xs flex justify-between border-b border-dotted border-ink-200 pb-1">
+                          <span className="text-ink-700 truncate">{r.road.replace(r.district, "")}</span>
+                          <span className="stat-num text-ink-900">
+                            {r.median_unit_price_ping ? (r.median_unit_price_ping / 10000).toFixed(1) : "—"} 萬
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {!picked && (
             <div className="flex h-full flex-col justify-center text-sm text-ink-500">
               <div className="text-ink-400 text-center py-8">
