@@ -431,24 +431,149 @@ def build_roads(con: duckdb.DuckDBPyConnection, out_dir: Path, months: int = 24)
 
 
 def build_recent(con: duckdb.DuckDBPyConnection, out_dir: Path, limit: int = 2000) -> None:
-    """每縣市 × deal_kind 近 N 筆成交（瀏覽頁起步資料）。"""
+    """每縣市 × deal_kind 近 N 筆成交（瀏覽頁起步資料）。
+
+    包含特殊註記交易（is_special_deal=True），由前端切換顯示，
+    讓買家自行決定是否參考凶宅 / 親友 / 急售等資料。
+    """
     for cc in METRO_CODES:
         for dk in DEAL_KIND.values():
-            where = WHERE_RENT if dk == "rent" else WHERE_CLEAN
+            # 寬鬆條件 — 不剃除特殊交易，讓前端 toggle
+            where_loose = (
+                "unit_price_per_ping IS NOT NULL "
+                "AND unit_price_per_ping BETWEEN 1000 AND 5000000 "
+                "AND building_area_sqm >= 20"
+                if dk != "rent" else
+                "total_price IS NOT NULL AND total_price BETWEEN 1000 AND 2000000"
+            )
             rows = con.execute(f"""
-                SELECT serial_no, county_code, district, address, building_type,
+                SELECT serial_no, county_code, district, address, road, building_type,
                        total_floors, transfer_floor_num, age_years,
                        rooms, halls, baths,
                        building_area_sqm, total_price, unit_price_per_ping,
-                       deal_date
+                       deal_date, is_special_deal, note
                   FROM v_{dk}
-                 WHERE county_code = ? AND {where}
+                 WHERE county_code = ? AND {where_loose}
                  ORDER BY deal_date DESC
                  LIMIT {limit}
             """, [cc]).fetchdf()
             rows["deal_date"] = rows["deal_date"].astype(str)
             _write(out_dir / "recent" / f"{cc}-{dk}.json", rows.to_dict("records"))
     logger.info("[snap] recent/*")
+
+
+def build_estimator(con: duckdb.DuckDBPyConnection, out_dir: Path, months: int = 24) -> None:
+    """個人估價：(county × district × building_type × area_bucket) → 百分位。
+
+    使用者輸入「板橋 / 大樓 / 30 坪」就能查到合理價區間。
+    """
+    for cc in METRO_CODES:
+        rows = con.execute(f"""
+            WITH bucketed AS (
+                SELECT district, building_type,
+                       CASE
+                           WHEN building_area_sqm < 49.59 THEN 'A_lt15'
+                           WHEN building_area_sqm < 82.64 THEN 'B_15_25'
+                           WHEN building_area_sqm < 115.70 THEN 'C_25_35'
+                           WHEN building_area_sqm < 165.29 THEN 'D_35_50'
+                           WHEN building_area_sqm < 231.41 THEN 'E_50_70'
+                           ELSE 'F_gt70' END AS area_bucket,
+                       unit_price_per_ping, total_price, age_years
+                  FROM v_sale
+                 WHERE county_code = ?
+                   AND {WHERE_CLEAN}
+                   AND building_type IS NOT NULL
+                   AND deal_date >= CURRENT_DATE - INTERVAL '{months} months'
+            )
+            SELECT district, building_type, area_bucket,
+                   COUNT(*) AS n,
+                   quantile_cont(unit_price_per_ping, 0.25) AS p25,
+                   quantile_cont(unit_price_per_ping, 0.50) AS p50,
+                   quantile_cont(unit_price_per_ping, 0.75) AS p75,
+                   AVG(unit_price_per_ping) AS mean,
+                   AVG(age_years) AS avg_age,
+                   median(total_price) AS median_total_price
+              FROM bucketed
+             GROUP BY 1, 2, 3
+            HAVING COUNT(*) >= 5
+        """, [cc]).fetchdf().to_dict("records")
+        _write(out_dir / "estimator" / f"{cc}.json", rows)
+    logger.info("[snap] estimator/*")
+
+
+def build_underpriced(con: duckdb.DuckDBPyConnection, out_dir: Path,
+                      months: int = 6, threshold: float = 0.85, limit: int = 80) -> None:
+    """撿漏雷達：近 N 月成交中，單價 ≤ 同區同類別 P25 × 0.85 的物件。"""
+    for cc in METRO_CODES:
+        rows = con.execute(f"""
+            WITH base AS (
+                SELECT *
+                  FROM v_sale
+                 WHERE county_code = ?
+                   AND {WHERE_CLEAN}
+                   AND deal_date >= CURRENT_DATE - INTERVAL '12 months'
+            ),
+            p25_by_group AS (
+                SELECT district, building_type,
+                       quantile_cont(unit_price_per_ping, 0.25) AS p25,
+                       COUNT(*) AS n
+                  FROM base
+                 GROUP BY 1, 2
+                HAVING COUNT(*) >= 10
+            )
+            SELECT b.serial_no, b.district, b.address, b.road, b.building_type,
+                   b.total_floors, b.transfer_floor_num, b.age_years,
+                   b.rooms, b.halls, b.baths,
+                   b.building_area_sqm, b.total_price, b.unit_price_per_ping,
+                   b.deal_date,
+                   p.p25 AS region_p25,
+                   (b.unit_price_per_ping / p.p25) AS price_ratio
+              FROM base b
+              JOIN p25_by_group p ON p.district = b.district
+                                AND p.building_type = b.building_type
+             WHERE b.deal_date >= CURRENT_DATE - INTERVAL '{months} months'
+               AND b.unit_price_per_ping <= p.p25 * {threshold}
+             ORDER BY price_ratio ASC
+             LIMIT {limit}
+        """, [cc]).fetchdf()
+        rows["deal_date"] = rows["deal_date"].astype(str)
+        _write(out_dir / "underpriced" / f"{cc}.json", rows.to_dict("records"))
+    logger.info("[snap] underpriced/*")
+
+
+def build_road_history(con: duckdb.DuckDBPyConnection, out_dir: Path,
+                       months: int = 36, per_road_limit: int = 200) -> None:
+    """每個路段近 N 月的所有成交（給「同社區成交」用）。
+
+    為了控制總量，只對 sale 烘 + 限制每路段最多 200 筆。
+    """
+    for cc in METRO_CODES:
+        rows = con.execute(f"""
+            WITH base AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (PARTITION BY road ORDER BY deal_date DESC) AS rn
+                  FROM v_sale
+                 WHERE county_code = ?
+                   AND road IS NOT NULL AND road <> ''
+                   AND {WHERE_CLEAN}
+                   AND deal_date >= CURRENT_DATE - INTERVAL '{months} months'
+            )
+            SELECT road, district, address,
+                   building_type, total_floors, transfer_floor_num,
+                   age_years, rooms, halls, baths,
+                   building_area_sqm, total_price, unit_price_per_ping,
+                   deal_date, is_special_deal
+              FROM base
+             WHERE rn <= {per_road_limit}
+             ORDER BY road, deal_date DESC
+        """, [cc]).fetchdf()
+        rows["deal_date"] = rows["deal_date"].astype(str)
+        # 依 road 分組成 dict[road] = list[deal]
+        out: dict[str, list] = {}
+        for r in rows.to_dict("records"):
+            out.setdefault(r["road"], []).append({k: v for k, v in r.items() if k != "road"})
+        _write(out_dir / "road-history" / f"{cc}.json", out)
+    logger.info("[snap] road-history/*")
 
 
 def build_all_snapshots(out_dir: Path = SNAPSHOT_DIR) -> None:
@@ -466,6 +591,9 @@ def build_all_snapshots(out_dir: Path = SNAPSHOT_DIR) -> None:
         build_size_buckets(con, out_dir)
         build_roads(con, out_dir)
         build_recent(con, out_dir)
+        build_estimator(con, out_dir)
+        build_underpriced(con, out_dir)
+        build_road_history(con, out_dir)
     finally:
         con.close()
 

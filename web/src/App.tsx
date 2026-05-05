@@ -5,6 +5,8 @@ import RegionPage from "./pages/RegionPage";
 import MapPage from "./pages/MapPage";
 import BrowsePage from "./pages/BrowsePage";
 import ComparePage from "./pages/ComparePage";
+import EstimatePage from "./pages/EstimatePage";
+import UnderpricedPage from "./pages/UnderpricedPage";
 import CalcPage from "./pages/CalcPage";
 import AboutPage from "./pages/AboutPage";
 import { data, type Meta } from "./lib/data";
@@ -49,6 +51,8 @@ export default function App() {
             { to: "/", label: "首頁總覽" },
             { to: "/map", label: "地圖搜尋" },
             { to: "/region", label: "縣市深掘" },
+            { to: "/estimate", label: "估價工具" },
+            { to: "/underpriced", label: "撿漏雷達" },
             { to: "/compare", label: "多區比較" },
             { to: "/browse", label: "成交瀏覽" },
             { to: "/calc", label: "購屋試算" },
@@ -86,6 +90,8 @@ export default function App() {
           <Route path="/" element={<HomePage meta={meta} />} />
           <Route path="/map" element={<MapPage meta={meta} />} />
           <Route path="/region" element={<RegionPage meta={meta} />} />
+          <Route path="/estimate" element={<EstimatePage meta={meta} />} />
+          <Route path="/underpriced" element={<UnderpricedPage meta={meta} />} />
           <Route path="/compare" element={<ComparePage meta={meta} />} />
           <Route path="/browse" element={<BrowsePage meta={meta} />} />
           <Route path="/calc" element={<CalcPage />} />

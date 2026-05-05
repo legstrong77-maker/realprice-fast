@@ -50,6 +50,11 @@
   .btn-active {
     @apply !border-ink-900 !bg-ink-900 !text-white;
   }
+  .input {
+    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-1.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent
+           disabled:bg-ink-50 disabled:text-ink-400;
+  }
   .table-clean th {
     @apply text-left text-[11px] uppercase tracking-[0.1em] text-ink-500 font-medium
            border-b border-ink-200 px-3 py-2 bg-ink-50;

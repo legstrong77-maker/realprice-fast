@@ -119,6 +119,7 @@ export interface RecentRow {
   county_code: string;
   district: string;
   address: string | null;
+  road: string | null;
   building_type: string | null;
   total_floors: number | null;
   transfer_floor_num: number | null;
@@ -130,6 +131,58 @@ export interface RecentRow {
   total_price: number | null;
   unit_price_per_ping: number | null;
   deal_date: string;
+  is_special_deal: boolean;
+  note: string | null;
+}
+
+export interface EstimatorRow {
+  district: string;
+  building_type: string;
+  area_bucket: string;        // A_lt15 | B_15_25 | C_25_35 | D_35_50 | E_50_70 | F_gt70
+  n: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  mean: number;
+  avg_age: number | null;
+  median_total_price: number | null;
+}
+
+export interface UnderpricedRow {
+  serial_no: string;
+  district: string;
+  address: string | null;
+  road: string | null;
+  building_type: string | null;
+  total_floors: number | null;
+  transfer_floor_num: number | null;
+  age_years: number | null;
+  rooms: number | null;
+  halls: number | null;
+  baths: number | null;
+  building_area_sqm: number | null;
+  total_price: number | null;
+  unit_price_per_ping: number | null;
+  deal_date: string;
+  region_p25: number;
+  price_ratio: number;        // unit_price / region_p25
+}
+
+export interface RoadHistoryDeal {
+  district: string;
+  address: string | null;
+  building_type: string | null;
+  total_floors: number | null;
+  transfer_floor_num: number | null;
+  age_years: number | null;
+  rooms: number | null;
+  halls: number | null;
+  baths: number | null;
+  building_area_sqm: number | null;
+  total_price: number | null;
+  unit_price_per_ping: number | null;
+  deal_date: string;
+  is_special_deal: boolean;
 }
 
 export const data = {
@@ -147,4 +200,8 @@ export const data = {
   ageBuckets:  (cc: string) => fetchJSON<AgeBucketRow[]>(`/age-buckets/${cc}.json`),
   sizeBuckets: (cc: string) => fetchJSON<SizeBucketRow[]>(`/size-buckets/${cc}.json`),
   roads:       (cc: string, dk: DealKind) => fetchJSON<RoadRow[]>(`/roads/${cc}-${dk}.json`),
+  estimator:   (cc: string) => fetchJSON<EstimatorRow[]>(`/estimator/${cc}.json`),
+  underpriced: (cc: string) => fetchJSON<UnderpricedRow[]>(`/underpriced/${cc}.json`),
+  roadHistory: (cc: string) =>
+                  fetchJSON<Record<string, RoadHistoryDeal[]>>(`/road-history/${cc}.json`),
 };
