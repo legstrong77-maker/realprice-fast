@@ -28,52 +28,54 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {/* —— 頂部：報頭 —— */}
       <header className="border-b border-ink-200 bg-white">
-        <div className="mx-auto flex max-w-[1300px] items-end justify-between px-6 pt-5 pb-3">
-          <div>
+        <div className="mx-auto flex max-w-[1300px] items-end justify-between gap-3 px-4 lg:px-6 pt-3 lg:pt-5 pb-2 lg:pb-3">
+          <div className="min-w-0">
             <NavLink to="/" className="block">
-              <div className="text-[11px] uppercase tracking-[0.25em] text-ink-500">
+              <div className="hidden lg:block text-[11px] uppercase tracking-[0.25em] text-ink-500">
                 Real-Price Quarterly · 全台 22 縣市
               </div>
-              <div className="font-serif text-3xl tracking-tightish text-ink-900">
+              <div className="font-serif text-2xl lg:text-3xl tracking-tightish text-ink-900">
                 Realprice<span className="text-accent">.</span>
               </div>
             </NavLink>
           </div>
-          <div className="text-right text-xs text-ink-500">
-            <div>最新成交日 <span className="stat-num text-ink-900">{lastSale}</span></div>
-            <div>資料來源 · 內政部實價登錄 Open Data</div>
+          <div className="text-right text-[11px] lg:text-xs text-ink-500 shrink-0">
+            <div>最新成交 <span className="stat-num text-ink-900">{lastSale}</span></div>
+            <div className="hidden lg:block">資料來源 · 內政部實價登錄 Open Data</div>
           </div>
         </div>
 
-        {/* —— 主導覽 —— */}
-        <nav className="mx-auto flex max-w-[1300px] items-center gap-1 px-6 pb-2">
-          {[
-            { to: "/", label: "首頁總覽" },
-            { to: "/map", label: "地圖搜尋" },
-            { to: "/region", label: "縣市深掘" },
-            { to: "/estimate", label: "估價工具" },
-            { to: "/underpriced", label: "撿漏雷達" },
-            { to: "/compare", label: "多區比較" },
-            { to: "/browse", label: "成交瀏覽" },
-            { to: "/calc", label: "購屋試算" },
-            { to: "/about", label: "關於與方法" },
-          ].map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.to === "/"}
-              className={({ isActive }) =>
-                `px-3 py-1.5 text-sm border-b-2 transition -mb-px
-                ${isActive
-                  ? "border-ink-900 text-ink-900 font-medium"
-                  : "border-transparent text-ink-500 hover:text-ink-900"}`
-              }
-            >
-              {it.label}
-            </NavLink>
-          ))}
-          <div className="ml-auto text-[11px] uppercase tracking-[0.15em] text-ink-400">
-            v0.2 · 全台版
+        {/* —— 主導覽：手機橫向滾動，桌面正常 flex —— */}
+        <nav className="mx-auto max-w-[1300px] px-4 lg:px-6 pb-2 overflow-x-auto scrollbar-thin">
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            {[
+              { to: "/", label: "首頁總覽" },
+              { to: "/map", label: "地圖搜尋" },
+              { to: "/region", label: "縣市深掘" },
+              { to: "/estimate", label: "估價工具" },
+              { to: "/underpriced", label: "撿漏雷達" },
+              { to: "/compare", label: "多區比較" },
+              { to: "/browse", label: "成交瀏覽" },
+              { to: "/calc", label: "購屋試算" },
+              { to: "/about", label: "關於與方法" },
+            ].map((it) => (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                end={it.to === "/"}
+                className={({ isActive }) =>
+                  `px-3 py-1.5 text-sm border-b-2 transition -mb-px shrink-0
+                  ${isActive
+                    ? "border-ink-900 text-ink-900 font-medium"
+                    : "border-transparent text-ink-500 hover:text-ink-900"}`
+                }
+              >
+                {it.label}
+              </NavLink>
+            ))}
+            <div className="ml-auto pl-3 hidden lg:block text-[11px] uppercase tracking-[0.15em] text-ink-400">
+              v0.2 · 全台版
+            </div>
           </div>
         </nav>
       </header>
