@@ -5,6 +5,11 @@ data/snapshots/
 pipeline/**/__pycache__/
 pipeline/**/*.pyc
 pipeline/_inspect*.py
+# debug 過程散落的 sample / norm-check txt 暫存
+pipeline/*.txt
+
+# wrangler 部署 cache（含本機帳號 token，絕對不能入庫）
+.wrangler/
 
 # 保留 data/geocode_cache.json — 重建成本高（每旬只增量）
 # 保留 data/addr_geocode_cache.json — Nominatim 跑得慢，要保留
