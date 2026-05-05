@@ -133,6 +133,9 @@ export interface RecentRow {
   deal_date: string;
   is_special_deal: boolean;
   note: string | null;
+  /** 由 addr_geocode 後處理填入；舊資料 / 沒命中的會缺。 */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface EstimatorRow {
