@@ -48,6 +48,39 @@ type Picked =
 
 type PoiLayer = "stations" | "schools" | "nimby";
 
+// 把 cc/dk/picked 同步到 URL hash，讓使用者能複製連結分享當前視角
+function readUrlState(): {
+  cc: string;
+  dk: DealKind;
+  pickD?: string;
+  pickR?: string;
+} {
+  const hash = typeof window === "undefined" ? "" : window.location.hash.slice(1);
+  const p = new URLSearchParams(hash);
+  const cc = p.get("cc") || "a";
+  const dkRaw = p.get("dk");
+  const dk: DealKind = dkRaw === "rent" || dkRaw === "presale" ? dkRaw : "sale";
+  return {
+    cc,
+    dk,
+    pickD: p.get("d") || undefined,
+    pickR: p.get("r") || undefined,
+  };
+}
+
+function writeUrlState(cc: string, dk: DealKind, picked: Picked) {
+  if (typeof window === "undefined") return;
+  const p = new URLSearchParams();
+  p.set("cc", cc);
+  p.set("dk", dk);
+  if (picked?.kind === "district") p.set("d", picked.row.district);
+  else if (picked?.kind === "road") p.set("r", picked.row.road);
+  const next = "#" + p.toString();
+  if (next !== window.location.hash) {
+    window.history.replaceState(null, "", next);
+  }
+}
+
 const POI_STYLE: Record<PoiLayer, {
   label: string;
   color: string;
@@ -60,15 +93,23 @@ const POI_STYLE: Record<PoiLayer, {
 };
 
 export default function MapPage({ meta }: { meta: Meta | null }) {
-  const [cc, setCc] = useState("a");
-  const [dk, setDk] = useState<DealKind>("sale");
+  // 讀 URL 初始狀態（refresh / 分享連結進來會還原視角）
+  const initial = useRef(readUrlState());
+  const [cc, setCc] = useState(initial.current.cc);
+  const [dk, setDk] = useState<DealKind>(initial.current.dk);
   const [heatmap, setHeatmap] = useState<HeatmapRow[]>([]);
   const [roads, setRoads] = useState<RoadRow[]>([]);
   const [recent, setRecent] = useState<RecentRow[]>([]);
   const [picked, setPicked] = useState<Picked>(null);
-  const [zoom, setZoom] = useState(COUNTY_VIEW.a.zoom);
+  const [zoom, setZoom] = useState((COUNTY_VIEW[initial.current.cc] ?? COUNTY_VIEW.a).zoom);
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  // URL 上 d=/r= 等資料載入後才能套用，先放這裡
+  const pendingPick = useRef<{ d?: string; r?: string } | null>(
+    initial.current.pickD || initial.current.pickR
+      ? { d: initial.current.pickD, r: initial.current.pickR }
+      : null
+  );
 
   // POI 圖層
   const [pois, setPois] = useState<Record<PoiLayer, POI[]>>({
@@ -93,6 +134,50 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     data.recent(cc, dk).then(setRecent).catch(() => setRecent([]));
   }, [cc, dk]);
 
+  // 從 URL 還原 picked：等 heatmap / roads 載完才能套用
+  useEffect(() => {
+    const p = pendingPick.current;
+    if (!p) return;
+    if (p.r && roads.length > 0) {
+      const row = roads.find(r => r.road === p.r);
+      if (row) {
+        setPicked({ kind: "road", row });
+        if (row.lat != null && row.lng != null) {
+          mapRef.current?.flyTo({ center: [row.lng, row.lat], zoom: 15.5, speed: 1.6 });
+        }
+        pendingPick.current = null;
+        return;
+      }
+    }
+    if (p.d && heatmap.length > 0) {
+      const row = heatmap.find(h => h.district === p.d);
+      if (row) {
+        setPicked({ kind: "district", row });
+        pendingPick.current = null;
+      }
+    }
+  }, [heatmap, roads]);
+
+  // 把 cc / dk / picked 寫回 URL hash（複製連結即可分享當前視角）
+  useEffect(() => {
+    writeUrlState(cc, dk, picked);
+  }, [cc, dk, picked]);
+
+  // 瀏覽器上一頁/下一頁按鈕：重新讀 URL 套用
+  useEffect(() => {
+    const onPop = () => {
+      const next = readUrlState();
+      setCc(next.cc);
+      setDk(next.dk);
+      pendingPick.current = next.pickD || next.pickR
+        ? { d: next.pickD, r: next.pickR }
+        : null;
+      if (!next.pickD && !next.pickR) setPicked(null);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // 抓 POI（懶載入：toggle 開了才抓）
   useEffect(() => {
     (Object.keys(poiOn) as PoiLayer[]).forEach((k) => {
@@ -105,7 +190,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   // 初始化地圖
   useEffect(() => {
     if (!container.current || mapRef.current) return;
-    const view = COUNTY_VIEW.a;
+    const view = COUNTY_VIEW[initial.current.cc] ?? COUNTY_VIEW.a;
     const map = new maplibregl.Map({
       container: container.current,
       style: {
@@ -225,36 +310,79 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
 
   // 用路段資料反推每個區「成交實際集中點」當泡泡座標 — 比硬編 centroid 準
   // 加權：以該路段的成交筆數做權重。沒路段資料時 fallback 到硬編。
-  // 路名 / 地址搜尋：對 roads 做 substring 比對
-  const searchResults = useMemo(() => {
+  // 路名 / 地址搜尋：對 roads + recent 都做 substring 比對
+  type SearchHit =
+    | { kind: "road"; row: RoadRow }
+    | { kind: "deal"; row: RecentRow };
+
+  const searchResults = useMemo<SearchHit[]>(() => {
     const q = search.trim();
     if (q.length < 1) return [];
-    // 全形/半形數字、空白通通拿掉
+    // 全形/半形數字、空白、區字通通拿掉，提升模糊匹配率
     const norm = (s: string) => s.replace(/\s+/g, "").replace(/區/g, "");
     const qn = norm(q);
-    const scored = roads
-      .filter(r => r.lat != null && r.lng != null)
-      .map(r => {
-        const hay = norm(r.road);
-        const idx = hay.indexOf(qn);
-        if (idx < 0) return null;
-        // 越前面命中、成交筆數越多 → 排越前
-        const score = idx * 1000 - r.deals;
-        return { r, score };
-      })
-      .filter((x): x is { r: RoadRow; score: number } => x != null)
-      .sort((a, b) => a.score - b.score)
-      .slice(0, 10)
-      .map(x => x.r);
-    return scored;
-  }, [search, roads]);
+    // 使用者打了數字（門牌號）→ 優先比對 recent address
+    const queryHasNumber = /\d/.test(q);
 
-  // 點搜尋結果 → flyTo + 設成 picked road
-  const handleSearchSelect = (r: RoadRow) => {
-    if (r.lat == null || r.lng == null) return;
-    setPicked({ kind: "road", row: r });
-    mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: 15.5, speed: 1.6 });
-    setSearch(r.road);
+    type Scored = { hit: SearchHit; score: number };
+    const out: Scored[] = [];
+
+    // 路段層級
+    for (const r of roads) {
+      if (r.lat == null || r.lng == null) continue;
+      const idx = norm(r.road).indexOf(qn);
+      if (idx < 0) continue;
+      // 路段比對：越前面命中越前、成交越多越前
+      let score = idx * 1000 - r.deals;
+      if (queryHasNumber) score += 500; // 含數字時降低路段優先順序
+      out.push({ hit: { kind: "road", row: r }, score });
+    }
+
+    // 個別交易層級（門牌級）— 只在有 lat/lng 的才能 fly-to
+    for (const d of recent) {
+      if (d.lat == null || d.lng == null) continue;
+      const addr = d.address || d.road;
+      if (!addr) continue;
+      const idx = norm(addr).indexOf(qn);
+      if (idx < 0) continue;
+      let score = idx * 1000 + 1; // deal 預設稍微低於同位址路段
+      if (queryHasNumber) score -= 1500; // 含數字時門牌大幅優先
+      out.push({ hit: { kind: "deal", row: d }, score });
+    }
+
+    // 同地址多筆成交去重：保留 score 最低（最相關）
+    const seen = new Map<string, Scored>();
+    for (const s of out) {
+      const k = s.hit.kind === "road"
+        ? `R:${s.hit.row.road}`
+        : `D:${(s.hit.row.address ?? s.hit.row.road)}`;
+      const prev = seen.get(k);
+      if (!prev || s.score < prev.score) seen.set(k, s);
+    }
+
+    return [...seen.values()]
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 12)
+      .map(x => x.hit);
+  }, [search, roads, recent]);
+
+  // 點搜尋結果 → flyTo + 設成對應 picked
+  const handleSearchSelect = (hit: SearchHit) => {
+    if (hit.kind === "road") {
+      const r = hit.row;
+      if (r.lat == null || r.lng == null) return;
+      setPicked({ kind: "road", row: r });
+      mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: 15.5, speed: 1.6 });
+      setSearch(r.road);
+    } else {
+      const d = hit.row;
+      if (d.lat == null || d.lng == null) return;
+      // 嘗試把對應路段也 pin 上去（這樣右側 panel 會列同路段成交）
+      const rr = roads.find(x => x.road === d.road);
+      if (rr) setPicked({ kind: "road", row: rr });
+      mapRef.current?.flyTo({ center: [d.lng, d.lat], zoom: 17, speed: 1.6 });
+      setSearch(d.address ?? d.road ?? "");
+    }
     setSearchOpen(false);
   };
 
@@ -403,18 +531,19 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   const totalRoads = roads.length;
 
   return (
-    <div className="space-y-6">
-      <section className="panel p-8">
-        <div className="label">Map view</div>
-        <h1 className="mt-2 font-serif text-3xl text-ink-900">地圖搜尋</h1>
-        <p className="mt-3 max-w-2xl text-ink-600 leading-7">
+    <div className="space-y-3 lg:space-y-6">
+      {/* 標題 — 桌面顯示完整介紹，手機只顯示精簡版 */}
+      <section className="panel p-4 lg:p-8">
+        <div className="label hidden lg:block">Map view</div>
+        <h1 className="font-serif text-xl lg:text-3xl lg:mt-2 text-ink-900">地圖搜尋</h1>
+        <p className="hidden lg:block mt-3 max-w-2xl text-ink-600 leading-7">
           縮放在 <strong>13 級以下</strong>顯示「鄉鎮泡泡」、<strong>13 級以上</strong>切換到「路段點」。
           泡泡上的數字 = 中位單價（萬/坪）。基於資料保護，我們不還原個別物件門牌。
         </p>
       </section>
 
       {/* 控制 + 圖例 */}
-      <div className="panel p-4 space-y-3">
+      <div className="panel p-3 lg:p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <select
             className="rounded-md border border-ink-200 bg-white px-3 py-1.5 text-sm"
@@ -444,18 +573,48 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
             )}
             {searchOpen && searchResults.length > 0 && (
               <div className="absolute z-50 mt-1 w-full bg-white border border-ink-200 rounded-md shadow-lg max-h-[320px] overflow-y-auto">
-                {searchResults.map((r) => {
-                  const wan = r.median_unit_price_ping ? (r.median_unit_price_ping / 10000).toFixed(1) : "—";
+                {searchResults.map((hit, idx) => {
+                  if (hit.kind === "road") {
+                    const r = hit.row;
+                    const wan = r.median_unit_price_ping ? (r.median_unit_price_ping / 10000).toFixed(1) : "—";
+                    return (
+                      <button
+                        key={`R-${r.road}-${idx}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSearchSelect(hit)}
+                        className="w-full text-left px-3 py-2 hover:bg-ink-50 border-b border-ink-100 last:border-0 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm text-ink-900 truncate">
+                            <span className="text-[10px] text-ink-400 mr-1.5">路段</span>
+                            {r.road.replace(r.district, "")}
+                          </div>
+                          <div className="text-[10px] text-ink-500">{r.district} · {r.deals} 筆</div>
+                        </div>
+                        <div className="text-xs stat-num text-ink-700 shrink-0">{wan} 萬/坪</div>
+                      </button>
+                    );
+                  }
+                  // 個別交易
+                  const d = hit.row;
+                  const wan = d.unit_price_per_ping ? (d.unit_price_per_ping / 10000).toFixed(1) : "—";
+                  const addr = (d.address ?? d.road ?? "").replace(d.district, "");
                   return (
                     <button
-                      key={r.road}
+                      key={`D-${d.serial_no}-${idx}`}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleSearchSelect(r)}
+                      onClick={() => handleSearchSelect(hit)}
                       className="w-full text-left px-3 py-2 hover:bg-ink-50 border-b border-ink-100 last:border-0 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm text-ink-900 truncate">{r.road.replace(r.district, "")}</div>
-                        <div className="text-[10px] text-ink-500">{r.district} · {r.deals} 筆</div>
+                        <div className="text-sm text-ink-900 truncate">
+                          <span className="text-[10px] text-accent mr-1.5">門牌</span>
+                          {addr}
+                        </div>
+                        <div className="text-[10px] text-ink-500">
+                          {d.district} · {d.deal_date}
+                          {d.building_type ? ` · ${d.building_type.replace(/\(.*?\)/g, "")}` : ""}
+                        </div>
                       </div>
                       <div className="text-xs stat-num text-ink-700 shrink-0">{wan} 萬/坪</div>
                     </button>
@@ -465,7 +624,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
             )}
             {searchOpen && search.trim() && searchResults.length === 0 && (
               <div className="absolute z-50 mt-1 w-full bg-white border border-ink-200 rounded-md shadow-lg px-3 py-3 text-xs text-ink-500">
-                找不到符合的路段（試試只輸入路名，例如「中華路」）
+                找不到符合的路段或門牌（試試「中華路」或「中華路100號」）
               </div>
             )}
           </div>
@@ -509,9 +668,9 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       </div>
 
       {/* 地圖 + 詳情 */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid gap-3 lg:gap-4 lg:grid-cols-[1fr_320px]">
         <div className="panel overflow-hidden relative">
-          <div ref={container} style={{ width: "100%", height: 580 }} />
+          <div ref={container} className="w-full h-[60vh] min-h-[420px] lg:h-[580px]" />
           {!showRoads && (
             <div className="absolute bottom-3 left-3 rounded-md bg-white/95 px-3 py-1.5 text-xs text-ink-700 shadow border border-ink-200 pointer-events-none">
               💡 滾輪放大或按 + 看路段資料（已索引 {visibleRoads} 條路段）
@@ -527,7 +686,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
           )}
         </div>
 
-        <div className="panel p-5">
+        <div className={`panel p-4 lg:p-5 ${picked ? "" : "hidden lg:block"}`}>
           {picked?.kind === "district" && (() => {
             const districtRecent = recent
               .filter(r => r.district === picked.row.district)
