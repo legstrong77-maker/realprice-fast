@@ -34,3 +34,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Claude Code session artifacts
+.claude/
+
+# pipeline 跑批次產生的 log（保留在本機看就好）
+logs/

@@ -143,12 +143,25 @@ def main(argv: list[str] | None = None) -> None:
     def cmd_addr_geocode(args2):
         from realprice.addr_geocode import (
             collect_addresses, geocode_addresses, apply_cache_to_recent_files,
+            upgrade_existing_cache_with_osm,
         )
+        if args2.upgrade_osm:
+            upgrade_existing_cache_with_osm()
+            if args2.apply_after:
+                apply_cache_to_recent_files()
+            return
         if args2.apply_only:
             apply_cache_to_recent_files()
             return
         candidates = collect_addresses()
         logger.info(f"recent files 蒐集到 {len(candidates)} 個唯一地址")
+        if args2.counties:
+            wanted = {c.strip() for c in args2.counties.split(",") if c.strip()}
+            before = len(candidates)
+            candidates = [t for t in candidates if t[0] in wanted]
+            logger.info(
+                f"--counties={sorted(wanted)} 過濾後 {len(candidates):,} / {before:,}"
+            )
         geocode_addresses(
             candidates,
             max_count=args2.max_count,
@@ -191,6 +204,10 @@ def main(argv: list[str] | None = None) -> None:
                         help="本次最多查多少個（限縮 scope，避免一次跑太久）")
     p_addr.add_argument("--only-road-cached", action="store_true",
                         help="只查路段已被 geocode 過的地址（提升命中率，砍掉偏鄉路）")
+    p_addr.add_argument("--counties", default=None,
+                        help="只跑指定縣市代號（逗號分隔，例：g,j,m,n）")
+    p_addr.add_argument("--upgrade-osm", action="store_true",
+                        help="一次性升級：把已存在的 Nominatim 巷-level / not_found 用 OSM 門牌補")
     p_addr.add_argument("--apply-after", action="store_true",
                         help="跑完之後立刻把座標套用到 web/public/data/recent/*.json")
     p_addr.add_argument("--apply-only", action="store_true",

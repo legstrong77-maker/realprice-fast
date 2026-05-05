@@ -181,8 +181,48 @@ def geocode_addresses(
         logger.info("addr-geocode: 沒有新地址要查")
         return cache
 
+    # OSM 本地庫預先過濾：門牌級命中就直接寫 cache、跳過 Nominatim。
+    # OSM Taiwan PBF 對台北/雙北/桃竹苗門牌覆蓋率高，能省掉大量 1-sec/req 配額，
+    # 並把精度從 Nominatim 的「巷-level fallback」拉升到門牌級。
+    try:
+        from . import osm_addr
+        osm_ok = osm_addr._get_con() is not None
+    except Exception as e:
+        logger.warning(f"OSM 本地庫載入失敗，跳過預先過濾：{e}")
+        osm_ok = False
+
+    if osm_ok:
+        prefiltered: list[tuple[str, str, str]] = []
+        osm_hits = 0
+        ts_now = int(time.time())
+        for cc, dk, addr in todo:
+            key = f"{cc}|{addr}"
+            res = osm_addr.lookup(addr)
+            if res:
+                cache[key] = {
+                    "lat": res[0],
+                    "lng": res[1],
+                    "query": "osm-exact",
+                    "src": "osm",
+                    "ts": ts_now,
+                }
+                osm_hits += 1
+            else:
+                prefiltered.append((cc, dk, addr))
+        if osm_hits:
+            save_addr_cache(cache)
+        logger.info(
+            f"OSM 預先過濾：{osm_hits}/{len(todo)} 直接命中門牌（省掉 Nominatim），"
+            f"剩 {len(prefiltered)} 個進 Nominatim"
+        )
+        todo = prefiltered
+
+    if not todo:
+        logger.info("addr-geocode: OSM 已蓋滿，沒東西要打 Nominatim")
+        return cache
+
     eta_min = len(todo) * RATE_LIMIT_SEC * 1.5 / 60  # *1.5 因為我們可能會 fallback 第二查
-    logger.info(f"addr-geocode: {len(todo)} 個新地址要查（預計 {eta_min:.1f} 分鐘）")
+    logger.info(f"addr-geocode: {len(todo)} 個新地址要查 Nominatim（預計 {eta_min:.1f} 分鐘）")
 
     headers = {"User-Agent": USER_AGENT, "Accept-Language": "zh-Hant,zh;q=0.9,en;q=0.5"}
     found = 0
@@ -207,6 +247,81 @@ def geocode_addresses(
 
     save_addr_cache(cache)
     logger.info(f"addr-geocode 完成：cache={len(cache)}, hit={found}/{len(todo)}")
+    return cache
+
+
+def upgrade_existing_cache_with_osm() -> dict:
+    """一次性升級：用 OSM 門牌級補回／升級已存在的 cache 條目。
+
+    處理三類條目：
+      1. not_found：原本 Nominatim 查不到 → 試 OSM 門牌；命中就轉成 hit。
+      2. Nominatim fallback 命中（query != normalized addr，例如 "中山路105巷9號"
+         的 query 是 "中山路105巷"）→ 升級成 OSM 門牌座標。
+      3. 其他（Nominatim 完整命中、或本來就是 osm-exact）→ 不動。
+    """
+    try:
+        from . import osm_addr
+        if osm_addr._get_con() is None:
+            logger.error("OSM 本地庫不存在，先跑 osm-build")
+            return load_addr_cache()
+    except Exception as e:
+        logger.error(f"OSM 載入失敗：{e}")
+        return load_addr_cache()
+
+    cache = load_addr_cache()
+    upgraded_miss = 0   # not_found → hit
+    upgraded_fb = 0     # 巷-level fallback → 門牌
+    skipped_exact = 0
+    skipped_already_osm = 0
+    ts_now = int(time.time())
+
+    for key, entry in cache.items():
+        # key 形式："{cc}|{normalized_addr}"
+        try:
+            _, addr = key.split("|", 1)
+        except ValueError:
+            continue
+
+        # 已經是 OSM 來的：跳過
+        if entry.get("src") == "osm":
+            skipped_already_osm += 1
+            continue
+
+        is_miss = bool(entry.get("not_found"))
+        is_fallback_hit = (
+            entry.get("lat") is not None
+            and entry.get("query") is not None
+            and entry["query"] != addr  # query 跟原地址不一樣 = Nominatim 用了 fallback
+        )
+
+        if not is_miss and not is_fallback_hit:
+            skipped_exact += 1
+            continue
+
+        res = osm_addr.lookup(addr)
+        if not res:
+            continue
+
+        cache[key] = {
+            "lat": res[0],
+            "lng": res[1],
+            "query": "osm-exact",
+            "src": "osm",
+            "ts": ts_now,
+        }
+        if is_miss:
+            upgraded_miss += 1
+        else:
+            upgraded_fb += 1
+
+    save_addr_cache(cache)
+    logger.info(
+        f"OSM 升級完成："
+        f"miss→hit {upgraded_miss}, "
+        f"巷→門牌 {upgraded_fb}, "
+        f"跳過(exact) {skipped_exact}, "
+        f"跳過(已是osm) {skipped_already_osm}"
+    )
     return cache
 
 
