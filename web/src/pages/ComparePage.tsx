@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid,
   Legend,
@@ -7,6 +8,7 @@ import { data, type DealKind, type Meta, type HeatmapRow, type MonthlyRow } from
 import { fmt, fmtPing, fmtWan, fmtPct } from "../lib/format";
 import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
+import { clearShortlist, removeShortlist, useShortlist } from "../lib/shortlist";
 
 type Pick = { county: string; district: string };
 
@@ -18,8 +20,14 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
     { county: "a", district: "信義區" },
     { county: "f", district: "板橋區" },
   ]);
+  const shortlist = useShortlist();
 
   const counties = meta?.counties ?? [];
+
+  useEffect(() => {
+    if (!shortlist.length) return;
+    setPicks(shortlist.slice(0, 5).map((x) => ({ county: x.county, district: x.district })));
+  }, [shortlist]);
 
   // 每個 pick 都抓 monthly + heatmap (用 heatmap 找 deal 量、median)
   const [seriesByPick, setSeriesByPick] = useState<Record<string, MonthlyRow[]>>({});
@@ -91,6 +99,31 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
     };
   }), [picks, heatByCounty, seriesByPick, counties]);
 
+  const verdict = useMemo(() => {
+    const ready = summary.filter(s => s.pick.district && s.heat);
+    if (ready.length < 2) return null;
+    const cheapest = [...ready].sort((a, b) =>
+      (a.heat!.median_unit_price_ping ?? Infinity) - (b.heat!.median_unit_price_ping ?? Infinity)
+    )[0];
+    const liquid = [...ready].sort((a, b) =>
+      (b.heat!.deals ?? 0) - (a.heat!.deals ?? 0)
+    )[0];
+    const stable = [...ready].sort((a, b) =>
+      Math.abs(a.pct_change ?? 0) - Math.abs(b.pct_change ?? 0)
+    )[0];
+    const fastest = [...ready].sort((a, b) =>
+      (b.pct_change ?? -Infinity) - (a.pct_change ?? -Infinity)
+    )[0];
+    const warnings = ready.flatMap((s) => {
+      const notes: string[] = [];
+      if ((s.heat?.deals ?? 0) < 30) notes.push(`${s.pick.district} 成交樣本偏少，價格參考性較弱`);
+      if ((s.pct_change ?? 0) > 0.15) notes.push(`${s.pick.district} 近半年漲幅偏快，避免只看最近成交追價`);
+      if ((s.pct_change ?? 0) < -0.12) notes.push(`${s.pick.district} 近半年回落，可議價但要查供給與屋況`);
+      return notes;
+    });
+    return { cheapest, liquid, stable, fastest, warnings };
+  }, [summary]);
+
   return (
     <div className="space-y-6">
       <section className="panel p-8">
@@ -106,11 +139,38 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
       <div className="panel p-4 space-y-3">
         <div className="flex justify-between items-center">
           <DealKindTabs value={dk} onChange={setDk} />
-          <button onClick={addPick} disabled={picks.length >= 5}
-                  className={`btn ${picks.length >= 5 ? "opacity-40 cursor-not-allowed" : ""}`}>
-            + 加一個比較區
-          </button>
+          <div className="flex gap-2">
+            {shortlist.length > 0 && (
+              <Link to="/report" className="btn btn-active">
+                產生買房報告
+              </Link>
+            )}
+            {shortlist.length > 0 && (
+              <button onClick={clearShortlist} className="btn text-down border-down/30">
+                清空比較籃
+              </button>
+            )}
+            <button onClick={addPick} disabled={picks.length >= 5}
+                    className={`btn ${picks.length >= 5 ? "opacity-40 cursor-not-allowed" : ""}`}>
+              + 加一個比較區
+            </button>
+          </div>
         </div>
+        {shortlist.length > 0 && (
+          <div className="flex flex-wrap gap-2 rounded-md border border-ink-200 bg-ink-50 p-3">
+            <span className="label mr-1 self-center">比較籃</span>
+            {shortlist.map((item) => (
+              <button
+                key={`${item.county}|${item.district}`}
+                className="pill hover:border-down/40 hover:text-down"
+                onClick={() => removeShortlist(item.county, item.district)}
+                title="從比較籃移除"
+              >
+                {item.countyName} · {item.district} ×
+              </button>
+            ))}
+          </div>
+        )}
         <div className="grid gap-2">
           {picks.map((p, i) => (
             <div key={i} className="flex items-center gap-2">
@@ -164,6 +224,51 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
         </div>
       </Section>
 
+      {verdict && (
+        <Section
+          kicker="比較結論"
+          title="哪個區更值得先看？"
+          right={<span className="text-xs text-ink-500">用價格、流動性、穩定度拆開看</span>}
+        >
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <ComparePill
+              title="預算友善"
+              district={verdict.cheapest.pick.district}
+              value={`${fmtPing(verdict.cheapest.heat?.median_unit_price_ping)} 萬/坪`}
+              tone="up"
+            />
+            <ComparePill
+              title="成交流動性"
+              district={verdict.liquid.pick.district}
+              value={`${fmt(verdict.liquid.heat?.deals)} 筆`}
+            />
+            <ComparePill
+              title="價格穩定"
+              district={verdict.stable.pick.district}
+              value={fmtPct(verdict.stable.pct_change)}
+            />
+            <ComparePill
+              title="短期最強"
+              district={verdict.fastest.pick.district}
+              value={fmtPct(verdict.fastest.pct_change)}
+              tone={(verdict.fastest.pct_change ?? 0) > 0.15 ? "warn" : "default"}
+            />
+          </div>
+          <div className="mt-4 rounded-md border border-ink-200 bg-ink-50 p-4">
+            <div className="label mb-2">買房提醒</div>
+            {verdict.warnings.length ? (
+              <ul className="space-y-1.5 text-sm leading-6 text-ink-700">
+                {verdict.warnings.slice(0, 5).map(w => <li key={w}>{w}</li>)}
+              </ul>
+            ) : (
+              <div className="text-sm text-ink-700">
+                目前比較區的成交量與短期動能沒有明顯警訊，可用中位價和總價帶作為看屋順序。
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+
       {/* 月度走勢比較 */}
       <Section
         kicker="月度走勢"
@@ -202,6 +307,24 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
           )}
         </div>
       </Section>
+    </div>
+  );
+}
+
+function ComparePill({
+  title, district, value, tone = "default",
+}: {
+  title: string;
+  district: string;
+  value: string;
+  tone?: "up" | "warn" | "default";
+}) {
+  const color = tone === "up" ? "text-up" : tone === "warn" ? "text-down" : "text-ink-900";
+  return (
+    <div className="rounded-md border border-ink-200 bg-white p-4">
+      <div className="label">{title}</div>
+      <div className="mt-1 font-serif text-xl text-ink-900">{district}</div>
+      <div className={`mt-1 stat-num text-sm ${color}`}>{value}</div>
     </div>
   );
 }

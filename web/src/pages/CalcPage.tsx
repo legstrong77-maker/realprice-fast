@@ -8,14 +8,19 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Bar,
 } from "recharts";
+import { useSearchParams } from "react-router-dom";
 
 export default function CalcPage() {
+  const [params] = useSearchParams();
   // ── 共用利率 / 年期
   const [rate, setRate] = useState(2.225);   // 央行公股 2.225%（2026 同水準）
   const [years, setYears] = useState(30);
 
   // ── 房貸試算
-  const [totalPrice, setTotalPrice] = useState(2000); // 萬
+  const [totalPrice, setTotalPrice] = useState(() => {
+    const p = Number(params.get("price"));
+    return Number.isFinite(p) && p > 0 ? p : 2000;
+  }); // 萬
   const [downPct, setDownPct] = useState(20);
   const principal = useMemo(
     () => totalPrice * 10000 * (1 - downPct / 100),
@@ -36,7 +41,7 @@ export default function CalcPage() {
   const stress = stressTest(principal, rate / 100, years);
 
   // ── 「以縣市中位推估你能買到什麼」
-  const [county, setCounty] = useState("a");
+  const [county, setCounty] = useState(params.get("county") || "a");
   const [dealKind] = useState<DealKind>("sale");
   const [summary, setSummary] = useState<Record<DealKind, CountySummary[]> | null>(null);
   useEffect(() => { data.countySummary().then(setSummary).catch(() => {}); }, []);
@@ -44,6 +49,13 @@ export default function CalcPage() {
   const ccRow = cs.find(r => r.county_code === county);
   const medianPing = ccRow?.median_unit_price_ping ?? null;
   const ableSqmPing = medianPing ? (aff.totalPrice / medianPing) : null;
+
+  useEffect(() => {
+    const p = Number(params.get("price"));
+    if (Number.isFinite(p) && p > 0) setTotalPrice(p);
+    const nextCounty = params.get("county");
+    if (nextCounty) setCounty(nextCounty);
+  }, [params]);
 
   return (
     <div className="space-y-8">
@@ -54,6 +66,11 @@ export default function CalcPage() {
           所有計算在你的瀏覽器裡跑，不會送到任何伺服器。
           以下不構成購屋或財務建議，只把數字算清楚給你看。
         </p>
+        {params.get("price") && (
+          <div className="mt-4 inline-flex rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-sm text-ink-700">
+            已套用儀表板估算總價：<span className="stat-num ml-1 text-accent">{fmt(totalPrice)} 萬</span>
+          </div>
+        )}
       </section>
 
       {/* 共用設定 */}

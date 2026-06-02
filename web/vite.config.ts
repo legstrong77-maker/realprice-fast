@@ -10,5 +10,16 @@ export default defineConfig({
   build: {
     target: "es2020",
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/maplibre-gl")) return "vendor-maplibre";
+          if (id.includes("node_modules/recharts")) return "vendor-recharts";
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom") || id.includes("node_modules/react-router-dom")) {
+            return "vendor-react";
+          }
+        },
+      },
+    },
   },
 });

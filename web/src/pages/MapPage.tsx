@@ -7,6 +7,8 @@ import {
 import { fmt, fmtPing, fmtWan } from "../lib/format";
 import { getCentroid } from "../lib/districtCentroids";
 import DealKindTabs from "../components/DealKindTabs";
+import { addShortlist, isShortlisted } from "../lib/shortlist";
+import { buildAreaNarrative, poiCountsNear } from "../lib/analysis";
 
 // 全台 22 縣市地圖中心
 const COUNTY_VIEW: Record<string, { center: [number, number]; zoom: number }> = {
@@ -104,6 +106,8 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   const [zoom, setZoom] = useState((COUNTY_VIEW[initial.current.cc] ?? COUNTY_VIEW.a).zoom);
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [budgetWan, setBudgetWan] = useState(1600);
+  const [areaPing, setAreaPing] = useState(30);
   // URL 上 d=/r= 等資料載入後才能套用，先放這裡
   const pendingPick = useRef<{ d?: string; r?: string } | null>(
     initial.current.pickD || initial.current.pickR
@@ -125,6 +129,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   const poiLayerInitRef = useRef(false);
 
   const counties = meta?.counties ?? [];
+  const countyName = counties.find(c => c.code === cc)?.name ?? cc;
 
   // 抓 heatmap + roads + 該縣市近期成交（給「縮小看賣房紀錄」用）
   useEffect(() => {
@@ -186,6 +191,16 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       }
     });
   }, [poiOn]);
+
+  // 行政區詳情需要 POI 摘要時，背景載入一次，不強迫使用者先開圖層。
+  useEffect(() => {
+    if (picked?.kind !== "district") return;
+    (Object.keys(pois) as PoiLayer[]).forEach((k) => {
+      if (pois[k].length === 0) {
+        data.pois(k).then((rows) => setPois((p) => ({ ...p, [k]: rows }))).catch(() => {});
+      }
+    });
+  }, [picked, pois]);
 
   // 初始化地圖
   useEffect(() => {
@@ -529,6 +544,23 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   const showRoads = zoom >= ROAD_ZOOM_THRESHOLD;
   const visibleRoads = roads.filter(r => r.lat != null && r.lng != null).length;
   const totalRoads = roads.length;
+  const affordableDistricts = useMemo(() => {
+    const budget = budgetWan * 10000;
+    return heatmap
+      .filter(r => r.median_unit_price_ping && r.deals)
+      .map((r) => ({
+        ...r,
+        estimatedTotal: (r.median_unit_price_ping ?? 0) * areaPing,
+        ratio: ((r.median_unit_price_ping ?? 0) * areaPing) / budget,
+      }))
+      .sort((a, b) => a.ratio - b.ratio);
+  }, [heatmap, budgetWan, areaPing]);
+
+  const focusDistrict = (row: HeatmapRow) => {
+    setPicked({ kind: "district", row });
+    const ll = districtCenters[row.district] ?? getCentroid(cc, row.district);
+    if (ll) mapRef.current?.flyTo({ center: ll, zoom: ROAD_ZOOM_THRESHOLD + 0.2, speed: 1.4 });
+  };
 
   return (
     <div className="space-y-3 lg:space-y-6">
@@ -665,6 +697,73 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
             zoom ≥ 14 顯示文字標籤
           </span>
         </div>
+
+        {/* 預算地圖 */}
+        {dk === "sale" && (
+          <div className="grid gap-3 border-t border-ink-100 pt-3 lg:grid-cols-[280px_1fr]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <label className="text-sm text-ink-700">
+                預算 <span className="stat-num text-ink-900">{fmt(budgetWan)}</span> 萬
+                <input
+                  type="range"
+                  min={500}
+                  max={6000}
+                  step={50}
+                  value={budgetWan}
+                  onChange={(e) => setBudgetWan(+e.target.value)}
+                  className="mt-2 w-full"
+                />
+              </label>
+              <label className="text-sm text-ink-700">
+                目標坪數 <span className="stat-num text-ink-900">{areaPing}</span> 坪
+                <input
+                  type="range"
+                  min={12}
+                  max={80}
+                  step={1}
+                  value={areaPing}
+                  onChange={(e) => setAreaPing(+e.target.value)}
+                  className="mt-2 w-full"
+                />
+              </label>
+            </div>
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <div className="label">預算地圖</div>
+                  <div className="text-xs text-ink-500">用行政區中位單價粗估 {areaPing} 坪總價，綠色代表預算內。</div>
+                </div>
+                <a className="btn hidden md:inline-flex" href={`/dashboard`}>
+                  進儀表板精算
+                </a>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {affordableDistricts.slice(0, 12).map((r) => {
+                  const inBudget = r.ratio <= 1;
+                  return (
+                    <button
+                      key={r.district}
+                      onClick={() => focusDistrict(r)}
+                      className={`min-w-[150px] rounded-md border px-3 py-2 text-left transition ${
+                        inBudget ? "border-up/30 bg-emerald-50" : "border-amber-300 bg-amber-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-ink-900">{r.district}</span>
+                        <span className={`stat-num text-xs ${inBudget ? "text-up" : "text-amber-700"}`}>
+                          {(r.ratio * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-ink-600">
+                        約 {fmtWan(r.estimatedTotal)} 萬 · {fmtPing(r.median_unit_price_ping)} 萬/坪
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 地圖 + 詳情 */}
@@ -691,6 +790,12 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
             const districtRecent = recent
               .filter(r => r.district === picked.row.district)
               .slice(0, 8);
+            const poiSummary = poiCountsNear(cc, picked.row.district, pois, 1.2);
+            const areaReport = buildAreaNarrative({
+              row: picked.row,
+              countyMedian: districtStats.min && districtStats.max ? (districtStats.min + districtStats.max) / 2 : null,
+              poi: poiSummary,
+            });
             return (
               <div>
                 <div className="flex items-start justify-between gap-2">
@@ -714,6 +819,36 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
                   <KV k="均價 萬/坪" v={fmtPing(picked.row.avg_unit_price_ping)} />
                   <KV k="中位總價 (萬)" v={fmtWan(picked.row.median_total_price)} />
                 </dl>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    className="btn"
+                    disabled={isShortlisted(cc, picked.row.district)}
+                    onClick={() => addShortlist({ county: cc, countyName, district: picked.row.district, source: "map" })}
+                  >
+                    {isShortlisted(cc, picked.row.district) ? "已在比較籃" : "加入比較籃"}
+                  </button>
+                  <a href="/compare" className="btn">前往比較</a>
+                </div>
+                <div className="mt-4 rounded-md border border-ink-200 bg-ink-50 p-3">
+                  <div className="label mb-2">生活機能摘要</div>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="rounded bg-white px-2 py-2">
+                      <div className="stat-num text-accent">{fmt(poiSummary.stations)}</div>
+                      <div className="text-ink-500">車站</div>
+                    </div>
+                    <div className="rounded bg-white px-2 py-2">
+                      <div className="stat-num text-up">{fmt(poiSummary.schools)}</div>
+                      <div className="text-ink-500">學校</div>
+                    </div>
+                    <div className="rounded bg-white px-2 py-2">
+                      <div className="stat-num text-down">{fmt(poiSummary.nimby)}</div>
+                      <div className="text-ink-500">嫌惡</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs leading-5 text-ink-600">
+                    {areaReport.notes.concat(areaReport.warnings).slice(0, 2).join(" ")}
+                  </div>
+                </div>
 
                 {districtRecent.length > 0 && (
                   <div className="mt-5">

@@ -13,6 +13,8 @@ import { fmt, fmtPct, fmtPing, fmtWan } from "../lib/format";
 import { Kpi, KpiBar } from "../components/KpiBar";
 import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
+import { addShortlist, isShortlisted } from "../lib/shortlist";
+import { buildAreaNarrative } from "../lib/analysis";
 
 export default function RegionPage({ meta }: { meta: Meta | null }) {
   const [params, setParams] = useSearchParams();
@@ -54,6 +56,7 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
 
   const counties = meta?.counties ?? [];
   const districts = meta?.districts?.[cc] ?? [];
+  const countyName = counties.find(c => c.code === cc)?.name ?? cc;
 
   const setQ = (next: Partial<{ county: string; dk: DealKind; district: string }>) => {
     const p = new URLSearchParams(params);
@@ -70,6 +73,54 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
   }, [heatmap]);
 
   const top = [...heatmap].sort((a,b)=> (b.median_unit_price_ping??0) - (a.median_unit_price_ping??0))[0];
+  const selectedHeat = district ? heatmap.find(r => r.district === district) : null;
+  const selectedMomentum = district ? momentum.find(r => r.district === district) : null;
+
+  const districtSignals = useMemo(() => {
+    if (!heatmap.length) return [];
+    const momByDistrict = new Map(momentum.map(m => [m.district, m]));
+    const city = cityMedian ?? 0;
+    return heatmap.map((h) => {
+      const m = momByDistrict.get(h.district);
+      const priceRatio = city && h.median_unit_price_ping ? h.median_unit_price_ping / city : null;
+      const liquidityScore = Math.min((h.deals ?? 0) / 160, 1) * 35;
+      const valueScore = priceRatio == null ? 10 : priceRatio < 0.85 ? 32 : priceRatio < 1 ? 24 : priceRatio < 1.18 ? 14 : 6;
+      const momentumScore = m?.pct_change == null ? 10 : m.pct_change > 0.15 ? 6 : m.pct_change > 0 ? 18 : m.pct_change > -0.12 ? 22 : 10;
+      const score = liquidityScore + valueScore + momentumScore;
+      const warning =
+        (h.deals ?? 0) < 30 ? "樣本偏少" :
+        m?.pct_change != null && m.pct_change > 0.15 ? "短期漲幅偏快" :
+        m?.pct_change != null && m.pct_change < -0.12 ? "價格回落，需查原因" :
+        priceRatio != null && priceRatio > 1.25 ? "價格高於縣市均衡" :
+        "條件相對穩定";
+      return { ...h, momentum: m?.pct_change ?? null, priceRatio, score, warning };
+    }).sort((a, b) => b.score - a.score);
+  }, [heatmap, momentum, cityMedian]);
+
+  const selectedAdvice = useMemo(() => {
+    if (!selectedHeat) return null;
+    const notes: string[] = [];
+    if ((selectedHeat.deals ?? 0) < 30) notes.push("近 12 月成交低於 30 筆，價格代表性偏弱。");
+    else if ((selectedHeat.deals ?? 0) >= 120) notes.push("成交量充足，較容易找到可比案例。");
+    if (selectedMomentum?.pct_change != null && selectedMomentum.pct_change > 0.15) {
+      notes.push("近半年漲幅偏快，追價前要確認是否為新案或特殊物件拉高。");
+    } else if (selectedMomentum?.pct_change != null && selectedMomentum.pct_change < -0.12) {
+      notes.push("近半年價格回落，適合議價，但要檢查供給、屋況或區域利空。");
+    } else if (selectedMomentum?.pct_change != null) {
+      notes.push("近半年價格變動溫和，較適合用 P25/P50/P75 做出價基準。");
+    }
+    if (cityMedian && selectedHeat.median_unit_price_ping) {
+      const ratio = selectedHeat.median_unit_price_ping / cityMedian;
+      if (ratio > 1.2) notes.push("單價明顯高於縣市平均，應要求地段、學區、屋況或交通條件支撐。");
+      if (ratio < 0.9) notes.push("單價低於縣市平均，可列入預算友善候選，但要看通勤與生活機能。");
+    }
+    return notes;
+  }, [selectedHeat, selectedMomentum, cityMedian]);
+  const narrative = selectedHeat ? buildAreaNarrative({
+    row: selectedHeat,
+    momentum: selectedMomentum ?? undefined,
+    countyMedian: cityMedian,
+  }) : null;
 
   return (
     <div className="space-y-8">
@@ -106,6 +157,83 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
         <Kpi label="縣市中位均價" value={cityMedian ? `${fmtPing(cityMedian)} 萬/坪` : "—"} sub="各鄉鎮中位之平均" />
         <Kpi label="最貴鄉鎮" value={top ? top.district : "—"} sub={top ? `${fmtPing(top.median_unit_price_ping)} 萬/坪` : "—"} />
       </KpiBar>
+
+      <Section
+        kicker="買房判斷"
+        title={district ? `${district} 區域提醒` : "自住友善候選區"}
+        right={<span className="text-xs text-ink-500">價格、成交量、短期動能綜合排序</span>}
+      >
+        {district && selectedHeat ? (
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-1">
+              <MiniSignal label="近 12 月成交" value={`${fmt(selectedHeat.deals)} 筆`} />
+              <MiniSignal label="中位單價" value={`${fmtPing(selectedHeat.median_unit_price_ping)} 萬/坪`} />
+              <MiniSignal label="近半年動能" value={fmtPct(selectedMomentum?.pct_change)} tone={(selectedMomentum?.pct_change ?? 0) > 0 ? "up" : "down"} />
+            </div>
+            <div className="rounded-md border border-ink-200 bg-ink-50 p-4">
+              <div className="label mb-3">看屋前先確認</div>
+              <ul className="space-y-2 text-sm leading-6 text-ink-700">
+                {(selectedAdvice ?? []).map((note) => <li key={note}>{note}</li>)}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {districtSignals.slice(0, 8).map((r) => (
+              <button
+                key={r.district}
+                onClick={() => setQ({ district: r.district })}
+                className="rounded-md border border-ink-200 bg-white p-4 text-left transition hover:border-accent hover:bg-accent/5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-serif text-lg text-ink-900">{r.district}</div>
+                  <div className="stat-num text-sm text-accent">{r.score.toFixed(0)}</div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-ink-500">
+                  <span>中位 {fmtPing(r.median_unit_price_ping)} 萬/坪</span>
+                  <span className="text-right">{fmt(r.deals)} 筆</span>
+                  <span className={(r.momentum ?? 0) > 0 ? "text-up" : "text-down"}>{fmtPct(r.momentum)}</span>
+                  <span className="text-right text-ink-700">{r.warning}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {district && narrative && (
+        <Section
+          kicker="區域摘要"
+          title={narrative.headline}
+          right={<span className={`pill ${narrative.confidence === "高" ? "text-up" : narrative.confidence === "低" ? "text-down" : ""}`}>可信度 {narrative.confidence}</span>}
+        >
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="grid gap-3 md:grid-cols-2">
+              {narrative.signals.map((s) => (
+                <MiniSignal key={s.label} label={s.label} value={s.value} tone={s.tone ?? "default"} />
+              ))}
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-1">
+              <div className="rounded-md border border-ink-200 bg-emerald-50 p-4">
+                <div className="label mb-2 text-up">可利用的優勢</div>
+                {narrative.notes.length ? (
+                  <ul className="space-y-1.5 text-sm leading-6 text-ink-700">
+                    {narrative.notes.map(n => <li key={n}>{n}</li>)}
+                  </ul>
+                ) : <div className="text-sm text-ink-500">沒有明顯優勢訊號，建議回到個案條件判斷。</div>}
+              </div>
+              <div className="rounded-md border border-ink-200 bg-rose-50 p-4">
+                <div className="label mb-2 text-down">需要查證的風險</div>
+                {narrative.warnings.length ? (
+                  <ul className="space-y-1.5 text-sm leading-6 text-ink-700">
+                    {narrative.warnings.map(w => <li key={w}>{w}</li>)}
+                  </ul>
+                ) : <div className="text-sm text-ink-500">目前沒有明顯資料警訊。</div>}
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
 
       {/* 月度趨勢（選了鄉鎮才顯示） */}
       {district && (
@@ -158,6 +286,7 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
                 <th className="text-right">均價 萬/坪</th>
                 <th className="text-right">中位總價 (萬)</th>
                 <th className="text-right">近 12 月成交</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -171,10 +300,22 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
                   <td className="text-right stat-num text-ink-500">{fmtPing(r.avg_unit_price_ping)}</td>
                   <td className="text-right stat-num">{fmtWan(r.median_total_price)}</td>
                   <td className="text-right stat-num text-ink-500">{fmt(r.deals)}</td>
+                  <td className="text-right">
+                    <button
+                      className="text-xs text-accent hover:underline disabled:text-ink-400 disabled:no-underline"
+                      disabled={isShortlisted(cc, r.district)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addShortlist({ county: cc, countyName, district: r.district, source: "region" });
+                      }}
+                    >
+                      {isShortlisted(cc, r.district) ? "已加入" : "加入比較"}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!heatmap.length && (
-                <tr><td colSpan={6} className="py-10 text-center text-ink-400">無資料 — 跑過 pipeline 了嗎？</td></tr>
+                <tr><td colSpan={7} className="py-10 text-center text-ink-400">無資料 — 跑過 pipeline 了嗎？</td></tr>
               )}
             </tbody>
           </table>
@@ -338,6 +479,16 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
           </div>
         </Section>
       )}
+    </div>
+  );
+}
+
+function MiniSignal({ label, value, tone = "default" }: { label: string; value: string; tone?: "up" | "down" | "default" }) {
+  const color = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-ink-900";
+  return (
+    <div className="rounded-md border border-ink-200 bg-white p-4">
+      <div className="label">{label}</div>
+      <div className={`mt-1 stat-num text-xl ${color}`}>{value}</div>
     </div>
   );
 }

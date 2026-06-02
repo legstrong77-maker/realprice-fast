@@ -5,6 +5,7 @@ import {
 import { fmt, fmtPing, fmtWan, fmtDate } from "../lib/format";
 import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
+import { Kpi, KpiBar } from "../components/KpiBar";
 
 export default function BrowsePage({ meta }: { meta: Meta | null }) {
   const [cc, setCc] = useState("a");
@@ -58,6 +59,19 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
   };
 
   const specialCount = rows.filter(r => r.is_special_deal).length;
+  const filteredStats = useMemo(() => {
+    const prices = filtered.map(r => r.unit_price_per_ping ?? 0).filter(Boolean).sort((a, b) => a - b);
+    const totals = filtered.map(r => r.total_price ?? 0).filter(Boolean).sort((a, b) => a - b);
+    const areas = filtered.map(r => r.building_area_sqm ? r.building_area_sqm / 3.305785 : 0).filter(Boolean);
+    const median = (xs: number[]) => xs.length ? xs[Math.floor(xs.length / 2)] : null;
+    const avgArea = areas.length ? areas.reduce((a, b) => a + b, 0) / areas.length : null;
+    const specialRatio = filtered.length ? filtered.filter(r => r.is_special_deal).length / filtered.length : null;
+    const warning =
+      filtered.length < 20 ? "樣本偏少，先放寬條件" :
+      specialRatio != null && specialRatio > 0.12 ? "特殊交易比例偏高" :
+      "樣本可供初步比較";
+    return { medianUnit: median(prices), medianTotal: median(totals), avgArea, specialRatio, warning };
+  }, [filtered]);
 
   return (
     <div className="space-y-6">
@@ -99,6 +113,13 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
           <span className="text-xs text-down font-medium">⚠ 已包含特殊交易，價位可能異常</span>
         )}
       </div>
+
+      <KpiBar>
+        <Kpi label="篩選後筆數" value={fmt(filtered.length)} sub={filteredStats.warning} accent={filtered.length >= 20 ? "up" : "down"} />
+        <Kpi label="中位單價" value={`${fmtPing(filteredStats.medianUnit)} 萬/坪`} sub="目前表格樣本" />
+        <Kpi label="中位總價" value={`${fmtWan(filteredStats.medianTotal)} 萬`} sub="目前表格樣本" />
+        <Kpi label="平均坪數" value={filteredStats.avgArea ? `${filteredStats.avgArea.toFixed(1)} 坪` : "—"} sub={filteredStats.specialRatio != null ? `特殊交易 ${fmt(filteredStats.specialRatio * 100, 1)}%` : "—"} />
+      </KpiBar>
 
       <Section
         kicker="預烘 · 最近 2000 筆"
@@ -168,6 +189,12 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
                     {isExpanded && r.road && (
                       <tr>
                         <td colSpan={10} className="bg-ink-50 px-5 py-4">
+                          <CaseCheckView
+                            deal={r}
+                            history={history}
+                            loading={!roadHistory}
+                            filteredMedian={filteredStats.medianUnit}
+                          />
                           <RoadHistoryView
                             road={r.road}
                             history={history}
@@ -191,6 +218,86 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
       <p className="text-xs text-ink-500 leading-relaxed">
         ※ 此頁顯示每縣市每類別預烘的「最新 2000 筆」。可勾選顯示特殊註記、可展開看同路段歷史成交。
       </p>
+    </div>
+  );
+}
+
+function median(xs: number[]) {
+  const sorted = xs.filter(Boolean).sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
+}
+
+function CaseCheckView({
+  deal, history, loading, filteredMedian,
+}: {
+  deal: RecentRow;
+  history: RoadHistoryDeal[];
+  loading: boolean;
+  filteredMedian: number | null;
+}) {
+  const roadMedian = median(history.map(h => h.unit_price_per_ping ?? 0));
+  const unit = deal.unit_price_per_ping ?? null;
+  const areaPing = deal.building_area_sqm ? deal.building_area_sqm / 3.305785 : null;
+  const vsRoad = unit && roadMedian ? (unit - roadMedian) / roadMedian : null;
+  const vsFilter = unit && filteredMedian ? (unit - filteredMedian) / filteredMedian : null;
+  const warnings = [
+    deal.is_special_deal ? "有特殊註記，成交價可能不可直接當行情" : null,
+    history.length > 0 && history.length < 5 ? "同路段樣本偏少，需回到鄰近區域交叉比對" : null,
+    deal.age_years != null && deal.age_years > 35 ? "屋齡偏高，注意貸款年限、修繕與管線狀況" : null,
+    deal.transfer_floor_num != null && deal.transfer_floor_num <= 1 ? "低樓層物件，注意採光、噪音與潮濕" : null,
+    areaPing != null && areaPing < 15 ? "坪數較小，單價可能被拉高，應看總價與格局" : null,
+  ].filter(Boolean) as string[];
+  const verdict =
+    deal.is_special_deal ? "只作輔助參考" :
+    vsRoad != null && vsRoad <= -0.12 ? "可能有議價亮點" :
+    vsRoad != null && vsRoad >= 0.12 ? "偏高，要求條件支撐" :
+    vsFilter != null && vsFilter <= -0.1 ? "低於目前篩選中位" :
+    "接近行情，可作為比價樣本";
+
+  return (
+    <div className="mb-4 rounded-md border border-ink-200 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="label">個案檢查卡</div>
+          <div className="font-serif text-lg text-ink-900">{verdict}</div>
+        </div>
+        <div className="text-right text-xs text-ink-500">
+          <div>成交 {fmtDate(deal.deal_date)}</div>
+          <div className="stat-num text-ink-900">{fmtWan(deal.total_price)} 萬 · {fmtPing(unit)} 萬/坪</div>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <CheckMetric label="相對同路段" value={loading ? "載入中" : vsRoad == null ? "—" : `${vsRoad > 0 ? "+" : ""}${(vsRoad * 100).toFixed(1)}%`} tone={vsRoad == null ? "default" : vsRoad <= 0 ? "up" : "down"} />
+        <CheckMetric label="相對篩選中位" value={vsFilter == null ? "—" : `${vsFilter > 0 ? "+" : ""}${(vsFilter * 100).toFixed(1)}%`} tone={vsFilter == null ? "default" : vsFilter <= 0 ? "up" : "down"} />
+        <CheckMetric label="同路段樣本" value={loading ? "載入中" : `${fmt(history.length)} 筆`} tone={history.length >= 10 ? "up" : "default"} />
+        <CheckMetric label="估計坪數" value={areaPing ? `${areaPing.toFixed(1)} 坪` : "—"} />
+      </div>
+      <div className="mt-3 rounded-md border border-ink-200 bg-ink-50 px-3 py-2">
+        <div className="label mb-1">看屋提醒</div>
+        {warnings.length ? (
+          <ul className="space-y-1 text-sm leading-6 text-ink-700">
+            {warnings.map(w => <li key={w}>{w}</li>)}
+          </ul>
+        ) : (
+          <div className="text-sm text-ink-700">目前沒有明顯資料警訊，可再比對屋況、車位、裝潢、管理費與貸款條件。</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CheckMetric({
+  label, value, tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "up" | "down" | "default";
+}) {
+  const color = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-ink-900";
+  return (
+    <div className="rounded-md border border-ink-200 bg-white px-3 py-2">
+      <div className="label">{label}</div>
+      <div className={`mt-1 stat-num text-lg ${color}`}>{value}</div>
     </div>
   );
 }

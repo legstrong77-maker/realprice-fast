@@ -103,6 +103,20 @@ export default function EstimatePage({ meta }: { meta: Meta | null }) {
   const total = result ? result.p50 * areaPing : null;
   const totalLow = result ? result.p25 * areaPing : null;
   const totalHigh = result ? result.p75 * areaPing : null;
+  const buyerNotes = useMemo(() => {
+    if (!result) return [];
+    const notes: string[] = [];
+    if (result.n < 20) notes.push("同條件樣本偏少，建議再回成交瀏覽頁看原始個案。");
+    else if (result.n >= 80) notes.push("同條件樣本充足，P25/P50/P75 具備較高參考性。");
+    if (result.from !== "完全符合條件") {
+      notes.push(`目前使用「${result.from}」估算，應把區間放寬，不要只看單一數字。`);
+    }
+    if (result.avg_age != null && Math.abs(age - result.avg_age) >= 10) {
+      notes.push(`你輸入的屋齡與樣本平均差 ${Math.abs(age - result.avg_age).toFixed(0)} 年，需另外比對屋況與貸款年限。`);
+    }
+    notes.push("出價時先用 P25 作為保守開價、P50 作為合理成交、P75 作為偏貴警戒。");
+    return notes;
+  }, [result, age]);
 
   return (
     <div className="space-y-6">
@@ -174,12 +188,12 @@ export default function EstimatePage({ meta }: { meta: Meta | null }) {
           >
             <KpiBar>
               <Kpi label="P25 偏低" value={`${fmtPing(result.p25)}`}
-                   sub={`萬/坪 · 總價約 ${fmtWan(totalLow ? totalLow * 10000 : null, 0)} 萬`} />
+                   sub={`萬/坪 · 總價約 ${fmtWan(totalLow, 0)} 萬`} />
               <Kpi label="P50 中位 ⭐" value={`${fmtPing(result.p50)}`}
-                   sub={`萬/坪 · 總價約 ${fmtWan(total ? total * 10000 : null, 0)} 萬`}
+                   sub={`萬/坪 · 總價約 ${fmtWan(total, 0)} 萬`}
                    accent="default" />
               <Kpi label="P75 偏高" value={`${fmtPing(result.p75)}`}
-                   sub={`萬/坪 · 總價約 ${fmtWan(totalHigh ? totalHigh * 10000 : null, 0)} 萬`} />
+                   sub={`萬/坪 · 總價約 ${fmtWan(totalHigh, 0)} 萬`} />
               <Kpi label="同條件樣本" value={fmt(result.n)}
                    sub={`平均屋齡 ${result.avg_age?.toFixed(1) ?? "—"} 年`} />
             </KpiBar>
@@ -200,6 +214,25 @@ export default function EstimatePage({ meta }: { meta: Meta | null }) {
             </div>
           </Section>
 
+          <Section kicker="買方策略" title="出價與風險建議">
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-md border border-ink-200 bg-white p-4">
+                <div className="label mb-3">建議出價帶</div>
+                <div className="space-y-3 text-sm">
+                  <OfferLine label="保守開價" value={totalLow} hint="適合先探屋主底線，熱門物件可能不易成交" />
+                  <OfferLine label="合理成交" value={total} hint="接近同條件中位數，可作為主要談判基準" strong />
+                  <OfferLine label="偏貴警戒" value={totalHigh} hint="高於此價要有地段、樓層、車位或屋況優勢" />
+                </div>
+              </div>
+              <div className="rounded-md border border-ink-200 bg-ink-50 p-4">
+                <div className="label mb-3">判斷依據</div>
+                <ul className="space-y-2 text-sm leading-6 text-ink-700">
+                  {buyerNotes.map(note => <li key={note}>{note}</li>)}
+                </ul>
+              </div>
+            </div>
+          </Section>
+
           <Section kicker="提醒" title="估價以外要注意的事">
             <ul className="text-sm leading-7 text-ink-700 list-disc pl-5">
               <li>本工具<strong>排除特殊註記交易</strong>（凶宅、急售、親友、員工等）</li>
@@ -216,6 +249,27 @@ export default function EstimatePage({ meta }: { meta: Meta | null }) {
           </div>
         </Section>
       )}
+    </div>
+  );
+}
+
+function OfferLine({
+  label, value, hint, strong,
+}: {
+  label: string;
+  value: number | null;
+  hint: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-dotted border-ink-200 pb-2 last:border-0 last:pb-0">
+      <div>
+        <div className={strong ? "font-medium text-ink-900" : "text-ink-700"}>{label}</div>
+        <div className="text-xs text-ink-500">{hint}</div>
+      </div>
+      <div className={`stat-num whitespace-nowrap text-right ${strong ? "text-xl text-accent" : "text-ink-900"}`}>
+        {fmtWan(value)} 萬
+      </div>
     </div>
   );
 }

@@ -1,15 +1,28 @@
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
-import HomePage from "./pages/HomePage";
-import RegionPage from "./pages/RegionPage";
-import MapPage from "./pages/MapPage";
-import BrowsePage from "./pages/BrowsePage";
-import ComparePage from "./pages/ComparePage";
-import EstimatePage from "./pages/EstimatePage";
-import UnderpricedPage from "./pages/UnderpricedPage";
-import CalcPage from "./pages/CalcPage";
-import AboutPage from "./pages/AboutPage";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { data, type Meta } from "./lib/data";
+import WorkflowSteps from "./components/WorkflowSteps";
+
+const HomePage = lazy(() => import("./pages/HomePage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const MapPage = lazy(() => import("./pages/MapPage"));
+const RegionPage = lazy(() => import("./pages/RegionPage"));
+const EstimatePage = lazy(() => import("./pages/EstimatePage"));
+const UnderpricedPage = lazy(() => import("./pages/UnderpricedPage"));
+const ComparePage = lazy(() => import("./pages/ComparePage"));
+const ReportPage = lazy(() => import("./pages/ReportPage"));
+const BrowsePage = lazy(() => import("./pages/BrowsePage"));
+const CalcPage = lazy(() => import("./pages/CalcPage"));
+const AboutPage = lazy(() => import("./pages/AboutPage"));
+
+function daysSince(dateText: string | null | undefined) {
+  if (!dateText) return null;
+  const dt = new Date(`${dateText.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.floor((today.getTime() - dt.getTime()) / 86_400_000));
+}
 
 export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -23,6 +36,8 @@ export default function App() {
   }, []);
 
   const lastSale = meta?.last_deal_date?.sale ?? "—";
+  const staleDays = daysSince(meta?.last_deal_date?.sale);
+  const freshnessTone = staleDays == null ? "text-ink-500" : staleDays > 21 ? "text-down" : staleDays > 14 ? "text-amber-700" : "text-up";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -41,7 +56,9 @@ export default function App() {
           </div>
           <div className="text-right text-[11px] lg:text-xs text-ink-500 shrink-0">
             <div>最新成交 <span className="stat-num text-ink-900">{lastSale}</span></div>
-            <div className="hidden lg:block">資料來源 · 內政部實價登錄 Open Data</div>
+            <div className={`hidden lg:block ${freshnessTone}`}>
+              {staleDays == null ? "資料來源 · 內政部實價登錄 Open Data" : `距今天 ${staleDays} 天 · ${staleDays > 14 ? "建議更新資料" : "資料新鮮"}`}
+            </div>
           </div>
         </div>
 
@@ -50,11 +67,13 @@ export default function App() {
           <div className="flex items-center gap-1 whitespace-nowrap">
             {[
               { to: "/", label: "首頁總覽" },
+              { to: "/dashboard", label: "買房儀表板" },
               { to: "/map", label: "地圖搜尋" },
               { to: "/region", label: "縣市深掘" },
               { to: "/estimate", label: "估價工具" },
               { to: "/underpriced", label: "撿漏雷達" },
               { to: "/compare", label: "多區比較" },
+              { to: "/report", label: "買房報告" },
               { to: "/browse", label: "成交瀏覽" },
               { to: "/calc", label: "購屋試算" },
               { to: "/about", label: "關於與方法" },
@@ -88,17 +107,27 @@ export default function App() {
             <span className="ml-2 text-ink-500">— 請確認已執行過 pipeline，並把 snapshots 同步到 web/public/data/</span>
           </div>
         )}
-        <Routes>
-          <Route path="/" element={<HomePage meta={meta} />} />
-          <Route path="/map" element={<MapPage meta={meta} />} />
-          <Route path="/region" element={<RegionPage meta={meta} />} />
-          <Route path="/estimate" element={<EstimatePage meta={meta} />} />
-          <Route path="/underpriced" element={<UnderpricedPage meta={meta} />} />
-          <Route path="/compare" element={<ComparePage meta={meta} />} />
-          <Route path="/browse" element={<BrowsePage meta={meta} />} />
-          <Route path="/calc" element={<CalcPage />} />
-          <Route path="/about" element={<AboutPage />} />
-        </Routes>
+        {meta && staleDays != null && staleDays > 14 && (
+          <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            目前買賣資料最新到 <span className="stat-num">{lastSale}</span>，距今天 {staleDays} 天。若要做最新決策，建議先跑一次資料更新。
+          </div>
+        )}
+        <WorkflowSteps pathname={loc.pathname} />
+        <Suspense fallback={<div className="panel p-8 text-sm text-ink-500">載入頁面中...</div>}>
+          <Routes>
+            <Route path="/" element={<HomePage meta={meta} />} />
+            <Route path="/dashboard" element={<DashboardPage meta={meta} />} />
+            <Route path="/map" element={<MapPage meta={meta} />} />
+            <Route path="/region" element={<RegionPage meta={meta} />} />
+            <Route path="/estimate" element={<EstimatePage meta={meta} />} />
+            <Route path="/underpriced" element={<UnderpricedPage meta={meta} />} />
+            <Route path="/compare" element={<ComparePage meta={meta} />} />
+            <Route path="/report" element={<ReportPage meta={meta} />} />
+            <Route path="/browse" element={<BrowsePage meta={meta} />} />
+            <Route path="/calc" element={<CalcPage />} />
+            <Route path="/about" element={<AboutPage />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* —— 頁尾 —— */}
