@@ -111,6 +111,42 @@ const OVERLAYS: { id: OverlayId; label: string; tiles: string; desc: string }[] 
   { id: "landsect", label: "地籍圖",   tiles: nlsc("LANDSECT"), desc: "宗地界線（放大後較清楚）" },
 ];
 
+/** 經濟部地質調查所 WMS（僅支援 EPSG:4326）→ 用 image source 動態覆蓋目前視窗。 */
+const GEOMAP_WMS = "https://geomap.gsmma.gov.tw/mapguide/mapagent/mapagent.fcgi";
+type WmsId = "liquefaction" | "fault";
+const WMS_LAYERS: { id: WmsId; label: string; layer: string; desc: string }[] = [
+  { id: "liquefaction", label: "土壤液化", layer: "WMS/Geomap_Envi_Soil_liquefatcion_2021", desc: "土壤液化潛勢（經濟部地調所，以已公開縣市為主）" },
+  { id: "fault",        label: "活動斷層", layer: "WMS/25K_Geomap_fault_2021",               desc: "2.5 萬分之一 活動斷層（經濟部地調所）" },
+];
+const TRANSPARENT_PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+type Quad = [[number, number], [number, number], [number, number], [number, number]];
+const TW_COORDS: Quad = [[119.3, 25.4], [122.1, 25.4], [122.1, 21.8], [119.3, 21.8]];
+
+function wmsImageUrl(layer: string, b: maplibregl.LngLatBounds, w: number, h: number): string {
+  // WMS 1.3.0 + EPSG:4326 → BBOX 軸序為 lat,lon（miny,minx,maxy,maxx）
+  const p = new URLSearchParams({
+    SERVICE: "WMS", VERSION: "1.3.0", REQUEST: "GetMap",
+    LAYERS: layer, STYLES: "", CRS: "EPSG:4326",
+    BBOX: `${b.getSouth()},${b.getWest()},${b.getNorth()},${b.getEast()}`,
+    WIDTH: String(w), HEIGHT: String(h), FORMAT: "image/png", TRANSPARENT: "true",
+  });
+  return `${GEOMAP_WMS}?${p.toString()}`;
+}
+
+function refreshWms(map: maplibregl.Map, id: WmsId, layer: string) {
+  const b = map.getBounds();
+  const w = Math.min(1280, Math.max(256, map.getContainer().clientWidth));
+  const latSpan = b.getNorth() - b.getSouth();
+  const lngSpan = b.getEast() - b.getWest() || 1;
+  const h = Math.min(1280, Math.max(256, Math.round(w * (latSpan / lngSpan))));
+  const coords: Quad = [
+    [b.getWest(), b.getNorth()], [b.getEast(), b.getNorth()],
+    [b.getEast(), b.getSouth()], [b.getWest(), b.getSouth()],
+  ];
+  const src = map.getSource(`wms-${id}`) as maplibregl.ImageSource | undefined;
+  if (src) src.updateImage({ url: wmsImageUrl(layer, b, w, h), coordinates: coords });
+}
+
 export default function MapPage({ meta }: { meta: Meta | null }) {
   // 讀 URL 初始狀態（refresh / 分享連結進來會還原視角）
   const initial = useRef(readUrlState());
@@ -143,7 +179,9 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
   // 政府圖磚：底圖切換 + 疊圖開關 + 透明度
   const [basemap, setBasemap] = useState<BasemapId>("osm");
   const [overlayOn, setOverlayOn] = useState<Record<OverlayId, boolean>>({ luimap: false, landsect: false });
+  const [wmsOn, setWmsOn] = useState<Record<WmsId, boolean>>({ liquefaction: false, fault: false });
   const [overlayOpacity, setOverlayOpacity] = useState(0.6);
+  const wmsStateRef = useRef<{ on: Record<WmsId, boolean> }>({ on: { liquefaction: false, fault: false } });
 
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -249,6 +287,11 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     });
     map.addControl(new maplibregl.NavigationControl({}), "top-right");
     map.on("zoom", () => setZoom(map.getZoom()));
+    // 視窗移動結束 → 重抓開啟中的 WMS 風險疊圖（image overlay 跟著視窗走）
+    map.on("moveend", () => {
+      const st = wmsStateRef.current.on;
+      WMS_LAYERS.forEach((wl) => { if (st[wl.id]) refreshWms(map, wl.id, wl.layer); });
+    });
     // 等 style 載完再加 政府圖磚 + POI source/layer
     map.on("load", () => {
       // —— 政府底圖（NLSC WMTS）：emap / photo（osm 已在 style 內），預設隱藏 ——
@@ -268,6 +311,14 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
         });
         map.addLayer({
           id: `ov-${o.id}`, type: "raster", source: `ov-${o.id}`,
+          layout: { visibility: "none" }, paint: { "raster-opacity": 0.6 },
+        });
+      });
+      // —— 風險疊圖（地調所 WMS，EPSG:4326 image overlay）：土壤液化 / 活動斷層 ——
+      WMS_LAYERS.forEach((wl) => {
+        map.addSource(`wms-${wl.id}`, { type: "image", url: TRANSPARENT_PX, coordinates: TW_COORDS });
+        map.addLayer({
+          id: `wms-${wl.id}`, type: "raster", source: `wms-${wl.id}`,
           layout: { visibility: "none" }, paint: { "raster-opacity": 0.6 },
         });
       });
@@ -366,8 +417,9 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     });
   }, [basemap]);
 
-  // 疊圖開關 + 透明度
+  // 疊圖開關 + 透明度（WMTS + WMS 風險圖）
   useEffect(() => {
+    wmsStateRef.current = { on: wmsOn };
     const m = mapRef.current; if (!m || !rasterInitRef.current) return;
     OVERLAYS.forEach((o) => {
       const id = `ov-${o.id}`;
@@ -375,7 +427,14 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       m.setLayoutProperty(id, "visibility", overlayOn[o.id] ? "visible" : "none");
       m.setPaintProperty(id, "raster-opacity", overlayOpacity);
     });
-  }, [overlayOn, overlayOpacity]);
+    WMS_LAYERS.forEach((wl) => {
+      const id = `wms-${wl.id}`;
+      if (!m.getLayer(id)) return;
+      m.setLayoutProperty(id, "visibility", wmsOn[wl.id] ? "visible" : "none");
+      m.setPaintProperty(id, "raster-opacity", overlayOpacity);
+      if (wmsOn[wl.id]) refreshWms(m, wl.id, wl.layer);
+    });
+  }, [overlayOn, wmsOn, overlayOpacity]);
 
   // 切縣市時飛過去
   useEffect(() => {
@@ -771,15 +830,34 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
               {o.label}
             </button>
           ))}
-          {(overlayOn.luimap || overlayOn.landsect) && (
+          <span className="mx-1 h-4 w-px bg-ink-200" />
+          <span className="text-xs text-down/80 mr-1">風險：</span>
+          {WMS_LAYERS.map((wl) => (
+            <button
+              key={wl.id}
+              onClick={() => setWmsOn(s => ({ ...s, [wl.id]: !s[wl.id] }))}
+              title={wl.desc}
+              className={`btn !text-xs !py-1 !px-2.5 ${wmsOn[wl.id] ? "!border-down !bg-down !text-white" : ""}`}
+            >
+              {wl.id === "liquefaction" ? "💧" : "⚡"} {wl.label}
+            </button>
+          ))}
+          {(overlayOn.luimap || overlayOn.landsect || wmsOn.liquefaction || wmsOn.fault) && (
             <label className="ml-1 flex items-center gap-1.5 text-[11px] text-ink-500">
               透明度
               <input type="range" min={0.2} max={1} step={0.05} value={overlayOpacity}
                 onChange={(e) => setOverlayOpacity(+e.target.value)} className="w-20" />
             </label>
           )}
-          <span className="ml-auto text-[10px] text-ink-400">圖磚 © 內政部國土測繪中心</span>
+          <span className="ml-auto text-[10px] text-ink-400">圖磚 © 國土測繪中心 · 風險 © 地質調查所</span>
         </div>
+
+        {(wmsOn.liquefaction || wmsOn.fault) && (
+          <div className="rounded-md border border-down/30 bg-red-50/50 px-3 py-2 text-[11px] leading-5 text-ink-600">
+            ⚠ 風險圖層為政府公開之<strong>潛勢概估</strong>，非保證；土壤液化目前以已公布縣市為主、空白不代表無風險。
+            僅供初步參考，購屋前請查閱經濟部地質調查及礦業管理中心正式資料與現地評估。
+          </div>
+        )}
 
         {/* 圖層切換 */}
         <div className="flex flex-wrap items-center gap-2 text-sm pt-2 border-t border-ink-100">
