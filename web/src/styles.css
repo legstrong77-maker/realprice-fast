@@ -231,7 +231,20 @@
 .recharts-cartesian-grid line { stroke: #e3dac8; stroke-dasharray: 2 4; }
 .recharts-cartesian-axis-tick text { fill: #7d7361; font-size: 11px; }
 .recharts-tooltip-wrapper { outline: none; }
-.recharts-default-tooltip { border-radius: 8px !important; }
+.recharts-default-tooltip {
+  border-radius: 8px !important;
+  border: none !important;
+  background: #1c1813 !important;
+  box-shadow: 0 8px 24px -8px rgba(16,13,9,0.5);
+  padding: 8px 12px !important;
+}
+/* tooltip 內文字一律淺色 —— 蓋掉 Recharts 預設「跟著數列顏色」造成的低對比 */
+.recharts-tooltip-label { color: #f8f4ec !important; font-weight: 600; margin-bottom: 2px !important; }
+.recharts-tooltip-item,
+.recharts-tooltip-item-name,
+.recharts-tooltip-item-separator,
+.recharts-tooltip-item-value { color: #f3e7c8 !important; }
+.recharts-tooltip-item-value { font-weight: 600; }
 
 /* 尊重減少動態偏好 */
 @media (prefers-reduced-motion: reduce) {
