@@ -15,6 +15,7 @@ const BrowsePage = lazy(() => import("./pages/BrowsePage"));
 const CalcPage = lazy(() => import("./pages/CalcPage"));
 const YieldPage = lazy(() => import("./pages/YieldPage"));
 const SellPage = lazy(() => import("./pages/SellPage"));
+const SpreadPage = lazy(() => import("./pages/SpreadPage"));
 const CostPage = lazy(() => import("./pages/CostPage"));
 const CommunityPage = lazy(() => import("./pages/CommunityPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
@@ -26,6 +27,7 @@ const NAV: { to: string; label: string }[] = [
   { to: "/region", label: "縣市深掘" },
   { to: "/estimate", label: "估價工具" },
   { to: "/sell", label: "賣房估價" },
+  { to: "/spread", label: "議價空間" },
   { to: "/community", label: "社區同棟" },
   { to: "/underpriced", label: "撿漏雷達" },
   { to: "/yield", label: "租金投報" },
@@ -163,6 +165,7 @@ export default function App() {
               <Route path="/calc" element={<CalcPage />} />
               <Route path="/yield" element={<YieldPage meta={meta} />} />
               <Route path="/sell" element={<SellPage meta={meta} />} />
+              <Route path="/spread" element={<SpreadPage meta={meta} />} />
               <Route path="/cost" element={<CostPage />} />
               <Route path="/community" element={<CommunityPage meta={meta} />} />
               <Route path="/about" element={<AboutPage />} />

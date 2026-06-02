@@ -596,6 +596,9 @@ def build_all_snapshots(out_dir: Path = SNAPSHOT_DIR) -> None:
         build_road_history(con, out_dir)
     finally:
         con.close()
+    # 議價空間：依賴上面已寫好的 heatmap / county-summary（延遲匯入避免循環依賴）
+    from .spread import build_spread
+    build_spread(out_dir)
 
 
 def sync_to_web_public() -> None:

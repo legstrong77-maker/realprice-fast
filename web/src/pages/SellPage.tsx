@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { data, type EstimatorRow, type Meta, type RecentRow } from "../lib/data";
+import { data, type EstimatorRow, type Meta, type RecentRow, type SpreadRow } from "../lib/data";
 import { fmt, fmtPing, fmtWan, fmtDate } from "../lib/format";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
@@ -42,13 +42,21 @@ export default function SellPage({ meta }: { meta: Meta | null }) {
 
   const [rows, setRows] = useState<EstimatorRow[]>([]);
   const [recent, setRecent] = useState<RecentRow[]>([]);
+  const [spread, setSpread] = useState<SpreadRow[]>([]);
 
   useEffect(() => {
     data.estimator(cc).then(setRows).catch(() => setRows([]));
     data.recent(cc, "sale").then(setRecent).catch(() => setRecent([]));
+    data.spread(cc).then(setSpread).catch(() => setSpread([]));
     setDistrict("");
     setBuildingType("");
   }, [cc]);
+
+  // 同區開價行情（議價空間頁同源）
+  const spreadRow = useMemo(
+    () => (district ? spread.find(r => r.district === district) ?? null : null),
+    [spread, district],
+  );
 
   const districts = useMemo(() => Array.from(new Set(rows.map(r => r.district))).sort(), [rows]);
   const buildingTypes = useMemo(() => {
@@ -181,6 +189,34 @@ export default function SellPage({ meta }: { meta: Meta | null }) {
                 </ul>
               </div>
             </div>
+
+            {spreadRow?.asking_median_ping && (
+              <div className="mt-4 rounded-md border border-brass-300 bg-brass-50 p-4">
+                <div className="label mb-3">
+                  同區開價帶 · {spreadRow.method === "scrape" ? `實抓開價 ${spreadRow.asking_n} 筆` : "議價率推估"}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                  <div><div className="text-ink-500 text-xs">同區開價中位</div>
+                    <div className="stat-num text-lg text-ink-900">{fmtPing(spreadRow.asking_median_ping)} 萬/坪</div></div>
+                  <div><div className="text-ink-500 text-xs">同區成交中位</div>
+                    <div className="stat-num text-lg text-ink-900">{fmtPing(spreadRow.sold_median_ping)} 萬/坪</div></div>
+                  <div><div className="text-ink-500 text-xs">同區議價空間</div>
+                    <div className="stat-num text-lg text-accent">{spreadRow.spread_pct != null ? `${(spreadRow.spread_pct * 100).toFixed(1)}%` : "—"}</div></div>
+                </div>
+                <p className="mt-3 text-xs text-ink-600">
+                  你的建議開價約 <strong>{fmtPing(adjPing.p50 * (1 + bargainPct / 100))} 萬/坪</strong>，
+                  {(() => {
+                    const my = adjPing.p50 * (1 + bargainPct / 100);
+                    const mkt = spreadRow.asking_median_ping!;
+                    const d = (my - mkt) / mkt;
+                    return d > 0.03 ? `比同區開價中位高 ${(d * 100).toFixed(0)}%——偏高恐拉長銷售期，除非物件條件明顯較好。`
+                      : d < -0.03 ? `比同區開價中位低 ${(-d * 100).toFixed(0)}%——買方易覺超值，確認沒低估自己物件。`
+                      : "與同區開價中位相當，定價落在市場合理帶。";
+                  })()}
+                </p>
+                <p className="mt-1 text-[11px] text-ink-400">開價帶與議價空間同源於 /spread 議價空間頁。</p>
+              </div>
+            )}
           </Section>
 
           <Section

@@ -7,7 +7,7 @@ import {
 import {
   data, type DealKind, type HeatmapRow, type Meta, type MomentumRow,
   type MonthlyRow, type DistributionPayload,
-  type BuildingTypeRow, type AgeBucketRow, type SizeBucketRow,
+  type BuildingTypeRow, type AgeBucketRow, type SizeBucketRow, type SpreadRow,
 } from "../lib/data";
 import { fmt, fmtPct, fmtPing, fmtWan } from "../lib/format";
 import { Kpi, KpiBar } from "../components/KpiBar";
@@ -29,6 +29,7 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
   const [bldgTypes, setBldgTypes] = useState<BuildingTypeRow[]>([]);
   const [ageBuckets, setAgeBuckets] = useState<AgeBucketRow[]>([]);
   const [sizeBuckets, setSizeBuckets] = useState<SizeBucketRow[]>([]);
+  const [spread, setSpread] = useState<SpreadRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   // 縣市 / 種類 一變就抓
@@ -44,7 +45,10 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
   useEffect(() => {
     data.ageBuckets(cc).then(setAgeBuckets).catch(() => setAgeBuckets([]));
     data.sizeBuckets(cc).then(setSizeBuckets).catch(() => setSizeBuckets([]));
+    data.spread(cc).then(setSpread).catch(() => setSpread([]));
   }, [cc]);
+
+  const spreadSel = district ? spread.find(r => r.district === district) ?? null : null;
 
   // 鄉鎮選擇 / 重置時抓月度
   useEffect(() => {
@@ -169,6 +173,13 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
               <MiniSignal label="近 12 月成交" value={`${fmt(selectedHeat.deals)} 筆`} />
               <MiniSignal label="中位單價" value={`${fmtPing(selectedHeat.median_unit_price_ping)} 萬/坪`} />
               <MiniSignal label="近半年動能" value={fmtPct(selectedMomentum?.pct_change)} tone={(selectedMomentum?.pct_change ?? 0) > 0 ? "up" : "down"} />
+              {spreadSel?.spread_pct != null && (
+                <MiniSignal
+                  label={`議價空間${spreadSel.method === "scrape" ? "（實抓開價）" : ""}`}
+                  value={`${(spreadSel.spread_pct * 100).toFixed(1)}%`}
+                  tone="default"
+                />
+              )}
             </div>
             <div className="rounded-md border border-ink-200 bg-ink-50 p-4">
               <div className="label mb-3">看屋前先確認</div>

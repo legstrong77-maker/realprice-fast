@@ -171,6 +171,31 @@ export interface UnderpricedRow {
   price_ratio: number;        // unit_price / region_p25
 }
 
+/** 議價空間：開價 vs 成交（method='report' 用議價率回推，'scrape' 用實抓開價）。 */
+export interface SpreadRow {
+  district: string;
+  sold_median_ping: number | null;     // 元/坪，成交中位（來自實價登錄）
+  sold_deals: number;
+  asking_median_ping: number | null;   // 元/坪，開價中位（回推或實抓）
+  asking_n: number | null;             // 實抓開價樣本數；method='report' 時為 null
+  nego_rate: number | null;            // 0~1
+  spread_pct: number | null;           // 0~1，議價空間 =(開價-成交)/開價
+  method: "report" | "scrape";
+  source: string;
+}
+
+export interface SpreadSummaryRow {
+  county_code: string;
+  county_name: string;
+  sold_median_ping: number | null;
+  asking_median_ping: number | null;
+  nego_rate: number;
+  spread_pct: number;
+  total_deals: number | null;
+  period: string | null;
+  source: string | null;
+}
+
 export interface RoadHistoryDeal {
   district: string;
   address: string | null;
@@ -207,6 +232,8 @@ export const data = {
   underpriced: (cc: string) => fetchJSON<UnderpricedRow[]>(`/underpriced/${cc}.json`),
   roadHistory: (cc: string) =>
                   fetchJSON<Record<string, RoadHistoryDeal[]>>(`/road-history/${cc}.json`),
+  spread:      (cc: string) => fetchJSON<SpreadRow[]>(`/spread/${cc}.json`),
+  spreadSummary: () => fetchJSON<SpreadSummaryRow[]>("/spread-summary.json"),
   pois:        (kind: "stations" | "schools" | "nimby") =>
                   fetchJSON<POI[]>(`/poi/${kind}.json`),
 };
