@@ -9,6 +9,25 @@ import { KpiBar, Kpi } from "../components/KpiBar";
 import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
 import CountUp from "../components/CountUp";
+import Reveal from "../components/Reveal";
+
+const ROLES = [
+  {
+    to: "/dashboard", tag: "Buyer", title: "我要買房", img: "/img/accent-buyer.webp",
+    desc: "輸入預算與房型，系統排出可優先看屋的行政區，給保守 / 合理 / 偏貴警戒三檔出價帶。",
+    cta: "進買房儀表板",
+  },
+  {
+    to: "/sell", tag: "Seller", title: "我要賣房", img: "/img/accent-seller.webp",
+    desc: "從同條件近兩年成交回推合理成交價與建議開價，並列同區近期成交，談價時直接佐證。",
+    cta: "進賣房估價",
+  },
+  {
+    to: "/yield", tag: "Investor", title: "我要收租", img: "/img/accent-invest.webp",
+    desc: "把同區的租賃與買賣成交放在一起算年化投報率，找出現金流回報最好的縣市與鄉鎮。",
+    cta: "看租金投報",
+  },
+];
 
 export default function HomePage({ meta }: { meta: Meta | null }) {
   const [dk, setDk] = useState<DealKind>("sale");
@@ -93,6 +112,38 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
         />
       </KpiBar>
 
+      {/* —— 三種使用情境 —— */}
+      <Reveal>
+        <div className="mb-5 flex items-end justify-between gap-3">
+          <div>
+            <div className="kicker mb-1.5">三種使用情境</div>
+            <h2 className="display text-[26px] text-ink-900">你站在哪一邊？</h2>
+          </div>
+          <Link to="/about" className="link-brass hidden text-sm sm:inline-block">資料方法與設計初衷</Link>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          {ROLES.map((r, i) => (
+            <Reveal key={r.to} delay={(i + 1) as 1 | 2 | 3}>
+              <Link to={r.to} className="panel card-lift group block h-full overflow-hidden">
+                <div className="relative h-36 overflow-hidden">
+                  <img src={r.img} alt="" loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-ink-900/55 via-ink-900/10 to-transparent" />
+                  <div className="absolute left-4 top-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-brass-200">
+                    {r.tag}
+                  </div>
+                  <h3 className="display absolute bottom-3 left-4 text-2xl text-ink-50">{r.title}</h3>
+                </div>
+                <div className="p-5">
+                  <p className="text-sm leading-6 text-ink-600">{r.desc}</p>
+                  <span className="link-brass mt-3 inline-block text-sm font-medium">{r.cta} →</span>
+                </div>
+              </Link>
+            </Reveal>
+          ))}
+        </div>
+      </Reveal>
+
       {/* —— 排行條形圖 —— */}
       <Section
         kicker="全台比較"
@@ -171,6 +222,30 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
           </table>
         </div>
       </Section>
+
+      {/* —— 收尾 CTA —— */}
+      <Reveal>
+        <div className="hero-atmosphere hero-grid overflow-hidden rounded-2xl">
+          <div className="flex flex-col items-start gap-5 px-6 py-10 lg:flex-row lg:items-center lg:justify-between lg:px-12">
+            <div>
+              <div className="kicker text-brass-300 [&::before]:bg-brass-300/60">不知道從哪開始？</div>
+              <h2 className="display mt-2 text-[28px] text-ink-50 lg:text-3xl">
+                先用預算，篩出<span className="text-brass-300">該看哪幾區</span>。
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-ink-200/80">
+                從「找候選區 → 比較 → 估合理價 → 查個案 → 算月付」，每一步都有對應工具，用一個比較籃串起來。
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-3">
+              <Link to="/dashboard" className="btn btn-brass">開始找候選區 →</Link>
+              <Link to="/map"
+                className="btn !border-white/25 !bg-white/5 !text-ink-50 backdrop-blur-sm hover:!border-brass-300 hover:!bg-white/10 hover:!text-brass-200">
+                先看地圖
+              </Link>
+            </div>
+          </div>
+        </div>
+      </Reveal>
     </div>
   );
 }

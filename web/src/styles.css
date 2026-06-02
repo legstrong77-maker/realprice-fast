@@ -196,15 +196,22 @@
 }
 
 @layer utilities {
-  /* 進場動畫：預設隱形，IntersectionObserver 加上 .is-in 後播放 */
-  .reveal { opacity: 0; }
-  .reveal.is-in { animation: fade-up 0.7s cubic-bezier(0.22,1,0.36,1) both; }
-  .reveal-1.is-in { animation-delay: 0.06s; }
-  .reveal-2.is-in { animation-delay: 0.12s; }
-  .reveal-3.is-in { animation-delay: 0.18s; }
-  .reveal-4.is-in { animation-delay: 0.24s; }
-  .reveal-5.is-in { animation-delay: 0.30s; }
-  .reveal-6.is-in { animation-delay: 0.36s; }
+  /* 進場動畫：用 transition（不依賴 @keyframes，避免 Tailwind tree-shake 掉）。
+     加上 .is-in 即淡入上移；任何情況都不會卡在隱形。 */
+  .reveal {
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.7s cubic-bezier(0.22,1,0.36,1),
+                transform 0.7s cubic-bezier(0.22,1,0.36,1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-in { opacity: 1; transform: none; }
+  .reveal-1 { transition-delay: 0.06s; }
+  .reveal-2 { transition-delay: 0.12s; }
+  .reveal-3 { transition-delay: 0.18s; }
+  .reveal-4 { transition-delay: 0.24s; }
+  .reveal-5 { transition-delay: 0.30s; }
+  .reveal-6 { transition-delay: 0.36s; }
 
   .text-balance { text-wrap: balance; }
   .text-pretty { text-wrap: pretty; }
@@ -234,5 +241,5 @@
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  .reveal { opacity: 1 !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
 }
