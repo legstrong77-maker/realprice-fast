@@ -3,6 +3,7 @@ import { data, type EstimatorRow, type Meta, type RecentRow } from "../lib/data"
 import { fmt, fmtPing, fmtWan, fmtDate } from "../lib/format";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
+import RoleHero from "../components/RoleHero";
 
 const AREA_BUCKETS: { key: string; sqm_min: number; sqm_max: number }[] = [
   { key: "A_lt15", sqm_min: 0, sqm_max: 49.59 },
@@ -100,15 +101,11 @@ export default function SellPage({ meta }: { meta: Meta | null }) {
 
   return (
     <div className="space-y-6">
-      <section className="panel p-8">
-        <div className="label">Seller's Lab · 賣房估價</div>
-        <h1 className="mt-2 font-serif text-3xl text-ink-900">我的房子值多少？該開多少？</h1>
-        <p className="mt-3 max-w-2xl text-ink-600 leading-7">
-          站在<strong>屋主／賣方業務</strong>的角度：輸入物件條件，從同條件近 24 個月實際成交回推
-          <strong>合理成交價</strong>，再依你想預留的<strong>議價空間</strong>給出<strong>建議開價</strong>。
-          下方並列同區近期成交，談價時可直接拿來佐證。
-        </p>
-      </section>
+      <RoleHero kicker="Seller's Lab · 賣房估價" title="我的房子值多少？該開多少？" img="/img/accent-seller.webp">
+        站在<strong>屋主／賣方業務</strong>的角度：輸入物件條件，從同條件近 24 個月實際成交回推
+        <strong>合理成交價</strong>，再依你想預留的<strong>議價空間</strong>給出<strong>建議開價</strong>。
+        下方並列同區近期成交，談價時可直接拿來佐證。
+      </RoleHero>
 
       <Section kicker="輸入你的物件" title="物件條件">
         <div className="grid gap-4 md:grid-cols-2">

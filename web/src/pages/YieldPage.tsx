@@ -3,6 +3,7 @@ import { data, type CountySummary, type HeatmapRow, type Meta } from "../lib/dat
 import { fmt, fmtPing } from "../lib/format";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
+import RoleHero from "../components/RoleHero";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -90,16 +91,12 @@ export default function YieldPage({ meta }: { meta: Meta | null }) {
 
   return (
     <div className="space-y-6">
-      <section className="panel p-8">
-        <div className="label">Investor's Lab · 包租公雷達</div>
-        <h1 className="mt-2 font-serif text-3xl text-ink-900">租金投報率：買來收租划算嗎？</h1>
-        <p className="mt-3 max-w-2xl text-ink-600 leading-7">
-          把<strong>同一地區的租賃成交</strong>和<strong>買賣成交</strong>放在一起算：
-          <span className="stat-num"> 年化投報率 = 年租金 ÷ 房價</span>。
-          這是市面上其他實價登錄站少見的視角 —— 因為要同時有租、售兩邊的成交資料。
-          數字越高代表「買來收租」的現金流回報越好；但高投報常伴隨增值性偏弱，請搭配房價趨勢一起看。
-        </p>
-      </section>
+      <RoleHero kicker="Investor's Lab · 包租公雷達" title="租金投報率：買來收租划算嗎？" img="/img/accent-invest.webp">
+        把<strong>同一地區的租賃成交</strong>和<strong>買賣成交</strong>放在一起算：
+        <span className="stat-num"> 年化投報率 = 年租金 ÷ 房價</span>。
+        這是市面上其他實價登錄站少見的視角 —— 因為要同時有租、售兩邊的成交資料。
+        數字越高代表「買來收租」的現金流回報越好；但高投報常伴隨增值性偏弱，請搭配房價趨勢一起看。
+      </RoleHero>
 
       {/* 全台縣市排行 */}
       <Section kicker="全台 22 縣市" title="哪個縣市收租回報最高？">

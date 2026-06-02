@@ -9,6 +9,7 @@ import {
 import { fmt, fmtPct, fmtPing, fmtWan } from "../lib/format";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
+import RoleHero from "../components/RoleHero";
 import { addShortlist, isShortlisted, useShortlist } from "../lib/shortlist";
 
 const AREA_BUCKETS = [
@@ -218,14 +219,10 @@ export default function DashboardPage({ meta }: { meta: Meta | null }) {
 
   return (
     <div className="space-y-6">
-      <section className="panel p-8">
-        <div className="label">Buyer Decision Dashboard</div>
-        <h1 className="mt-2 font-serif text-3xl text-ink-900">買房決策儀表板</h1>
-        <p className="mt-3 max-w-3xl text-ink-600 leading-7">
-          輸入預算與房型後，系統用近 12 月區域行情、近半年動能與同條件估價樣本，
-          排出可優先看屋的地區，並給出保守價、合理價與偏貴警戒。
-        </p>
-      </section>
+      <RoleHero kicker="Buyer Decision Dashboard" title="買房決策儀表板" img="/img/accent-buyer.webp">
+        輸入預算與房型後，系統用近 12 月區域行情、近半年動能與同條件估價樣本，
+        排出可優先看屋的地區，並給出保守價、合理價與偏貴警戒。
+      </RoleHero>
 
       <div className="panel p-4">
         <div className="grid gap-3 md:grid-cols-4">
