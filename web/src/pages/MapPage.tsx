@@ -105,9 +105,10 @@ const BASEMAPS: { id: BasemapId; label: string; icon: string; tiles: string; att
   { id: "photo", label: "航照影像", icon: "🛰", tiles: nlsc("PHOTO2"), attribution: "© 內政部國土測繪中心 NLSC" },
 ];
 
-type OverlayId = "luimap" | "landsect";
+type OverlayId = "luimap" | "landsect" | "geosens";
 const OVERLAYS: { id: OverlayId; label: string; tiles: string; desc: string }[] = [
-  { id: "luimap",   label: "土地使用", tiles: nlsc("LUIMAP"),   desc: "國土利用現況（住/商/工/農 概況）" },
+  { id: "luimap",   label: "土地使用", tiles: nlsc("LUIMAP"),   desc: "國土利用現況（住宅/商業/工業/農業 概況，放大後較清楚）" },
+  { id: "geosens",  label: "地質敏感", tiles: nlsc("GeoSensitive"), desc: "地質敏感區（活動斷層／山崩地滑／地下水補注）" },
   { id: "landsect", label: "地籍圖",   tiles: nlsc("LANDSECT"), desc: "宗地界線（放大後較清楚）" },
 ];
 
@@ -178,7 +179,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
 
   // 政府圖磚：底圖切換 + 疊圖開關 + 透明度
   const [basemap, setBasemap] = useState<BasemapId>("osm");
-  const [overlayOn, setOverlayOn] = useState<Record<OverlayId, boolean>>({ luimap: false, landsect: false });
+  const [overlayOn, setOverlayOn] = useState<Record<OverlayId, boolean>>({ luimap: false, landsect: false, geosens: false });
   const [wmsOn, setWmsOn] = useState<Record<WmsId, boolean>>({ liquefaction: false, fault: false });
   const [overlayOpacity, setOverlayOpacity] = useState(0.6);
   const wmsStateRef = useRef<{ on: Record<WmsId, boolean> }>({ on: { liquefaction: false, fault: false } });
@@ -842,7 +843,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
               {wl.id === "liquefaction" ? "💧" : "⚡"} {wl.label}
             </button>
           ))}
-          {(overlayOn.luimap || overlayOn.landsect || wmsOn.liquefaction || wmsOn.fault) && (
+          {(Object.values(overlayOn).some(Boolean) || Object.values(wmsOn).some(Boolean)) && (
             <label className="ml-1 flex items-center gap-1.5 text-[11px] text-ink-500">
               透明度
               <input type="range" min={0.2} max={1} step={0.05} value={overlayOpacity}
