@@ -58,6 +58,30 @@ export function affordablePrice(
   };
 }
 
+/** 房地合一稅 2.0 稅率（境內個人，依持有年數）。
+ *  ≤2年 45%、2~5年 35%、5~10年 20%、>10年 15%。
+ *  自住優惠（設籍滿6年等條件）：課稅所得 400 萬內免稅、超過部分 10%。
+ *  回傳「邊際稅率」；自住優惠的免稅額另在呼叫端處理。 */
+export function consolidatedTaxRate(holdYears: number, selfUse = false): number {
+  if (selfUse) return 0.10;
+  if (holdYears <= 2) return 0.45;
+  if (holdYears <= 5) return 0.35;
+  if (holdYears <= 10) return 0.20;
+  return 0.15;
+}
+
+/** 房地合一稅額。課稅所得 = 售價 − 取得成本 − 必要費用（皆為元）。
+ *  selfUse 時前 400 萬免稅，且需符合自住要件。 */
+export function consolidatedTax(
+  salePrice: number, acquireCost: number, expenses: number,
+  holdYears: number, selfUse = false,
+): { taxable: number; rate: number; tax: number } {
+  const gain = Math.max(0, salePrice - acquireCost - expenses);
+  const rate = consolidatedTaxRate(holdYears, selfUse);
+  const taxable = selfUse ? Math.max(0, gain - 4_000_000) : gain;
+  return { taxable, rate, tax: taxable * rate };
+}
+
 /** 升息壓力測試：一個 base + 多個 delta，回傳對照表。 */
 export function stressTest(
   principal: number, baseRate: number, years: number,

@@ -13,6 +13,10 @@ const ComparePage = lazy(() => import("./pages/ComparePage"));
 const ReportPage = lazy(() => import("./pages/ReportPage"));
 const BrowsePage = lazy(() => import("./pages/BrowsePage"));
 const CalcPage = lazy(() => import("./pages/CalcPage"));
+const YieldPage = lazy(() => import("./pages/YieldPage"));
+const SellPage = lazy(() => import("./pages/SellPage"));
+const CostPage = lazy(() => import("./pages/CostPage"));
+const CommunityPage = lazy(() => import("./pages/CommunityPage"));
 const AboutPage = lazy(() => import("./pages/AboutPage"));
 
 function daysSince(dateText: string | null | undefined) {
@@ -71,11 +75,15 @@ export default function App() {
               { to: "/map", label: "地圖搜尋" },
               { to: "/region", label: "縣市深掘" },
               { to: "/estimate", label: "估價工具" },
+              { to: "/sell", label: "賣房估價" },
+              { to: "/community", label: "社區同棟" },
               { to: "/underpriced", label: "撿漏雷達" },
+              { to: "/yield", label: "租金投報" },
               { to: "/compare", label: "多區比較" },
               { to: "/report", label: "買房報告" },
               { to: "/browse", label: "成交瀏覽" },
               { to: "/calc", label: "購屋試算" },
+              { to: "/cost", label: "交易成本" },
               { to: "/about", label: "關於與方法" },
             ].map((it) => (
               <NavLink
@@ -125,6 +133,10 @@ export default function App() {
             <Route path="/report" element={<ReportPage meta={meta} />} />
             <Route path="/browse" element={<BrowsePage meta={meta} />} />
             <Route path="/calc" element={<CalcPage />} />
+            <Route path="/yield" element={<YieldPage meta={meta} />} />
+            <Route path="/sell" element={<SellPage meta={meta} />} />
+            <Route path="/cost" element={<CostPage />} />
+            <Route path="/community" element={<CommunityPage meta={meta} />} />
             <Route path="/about" element={<AboutPage />} />
           </Routes>
         </Suspense>
