@@ -831,7 +831,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
                 />
               </label>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
                   <div className="label">預算地圖</div>
