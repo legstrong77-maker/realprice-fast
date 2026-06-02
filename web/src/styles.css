@@ -2,72 +2,237 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ════════════════════════════════════════════════════════════
+   Realprice — 編輯紙本 / 精品財經誌 主題
+   暖紙底 × 深墨 × 黃銅金，Fraunces 大標，mono 數字
+   ════════════════════════════════════════════════════════════ */
+
 @layer base {
+  :root {
+    /* 背景圖插槽：真實照片進來時覆蓋這些變數即可（見 public/img/PROMPTS.md） */
+    --hero-photo: url("/img/hero-skyline.webp");
+    --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  }
+
   html {
     @apply bg-ink-50 text-ink-900;
     font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply min-h-screen;
-    background:
-      radial-gradient(60% 40% at 100% 0%, rgba(29, 78, 216, 0.04) 0%, transparent 60%),
-      radial-gradient(40% 30% at 0% 100%, rgba(120, 113, 108, 0.05) 0%, transparent 60%),
-      #fafaf9;
+    @apply min-h-screen font-sans;
+    color: theme("colors.ink.800");
+    /* 暖紙底 + 黃銅/墨 漸層霧 + 極淡等高線格紋 */
+    background-color: #f8f4ec;
+    background-image:
+      radial-gradient(70% 50% at 100% -5%, rgba(184, 134, 44, 0.10) 0%, transparent 55%),
+      radial-gradient(50% 40% at -5% 102%, rgba(28, 24, 19, 0.06) 0%, transparent 60%),
+      radial-gradient(40% 35% at 50% 120%, rgba(184, 134, 44, 0.05) 0%, transparent 60%);
+    background-attachment: fixed;
   }
 
-  h1, h2, h3 { @apply font-serif tracking-tightish; }
-
-  /* numbers everywhere should look tabular */
-  .num, table td, table th {
-    font-variant-numeric: tabular-nums;
+  /* 極淡紙紋顆粒（固定覆蓋，不影響互動） */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image: var(--paper-grain);
+    background-size: 160px 160px;
+    opacity: 0.025;
+    mix-blend-mode: multiply;
   }
+
+  h1, h2, h3 {
+    @apply font-serif tracking-tightish text-ink-900;
+    font-optical-sizing: auto;
+  }
+
+  .num, table td, table th { font-variant-numeric: tabular-nums; }
+
+  /* 連結預設帶黃銅底線動態 */
+  ::selection { background: rgba(184, 134, 44, 0.22); }
 }
 
 @layer components {
-  .stat-num { @apply font-mono tabular-nums tracking-tight; }
+
+  /* ——— 字體 / 標題系統 ——— */
+  .display {
+    @apply font-serif text-ink-900;
+    font-weight: 600;
+    font-optical-sizing: auto;
+    font-variation-settings: "opsz" 144, "SOFT" 0, "WONK" 0;
+    letter-spacing: -0.025em;
+    line-height: 0.98;
+  }
+  .display-italic { font-style: italic; font-weight: 500; }
+
+  .stat-num { @apply font-mono tabular-nums; letter-spacing: -0.02em; }
+
+  /* 黃銅小標（kicker / label） */
+  .label, .kicker {
+    @apply text-[11px] uppercase font-semibold text-brass-600;
+    letter-spacing: 0.18em;
+  }
+  .kicker {
+    @apply inline-flex items-center gap-2;
+  }
+  .kicker::before {
+    content: "";
+    @apply inline-block h-px w-6 bg-brass-400;
+  }
+
+  /* 髮絲分隔線 */
+  .hairline { @apply border-0 border-t border-ink-200; }
+
+  /* ——— 卡片 / 面板 ——— */
+  .panel {
+    @apply relative rounded-xl border border-ink-200/80 bg-[#fdfbf6];
+    box-shadow: theme("boxShadow.card");
+  }
+  .panel-padded { @apply panel p-5; }
+  .panel-head {
+    @apply flex items-center justify-between gap-3 border-b border-ink-200/70 px-5 py-3.5;
+  }
+  /* 可 hover 抬升的卡片 */
+  .card-lift {
+    @apply transition-all duration-300 ease-out;
+  }
+  .card-lift:hover {
+    box-shadow: theme("boxShadow.lift");
+    transform: translateY(-2px);
+    @apply border-brass-200;
+  }
+
   .pill {
     @apply inline-flex items-center gap-1.5 rounded-full border border-ink-200
-           bg-white px-2.5 py-0.5 text-xs font-medium text-ink-600;
+           bg-[#fdfbf6] px-2.5 py-0.5 text-xs font-medium text-ink-600;
   }
-  .panel {
-    @apply rounded-lg border border-ink-200 bg-white;
+  .pill-brass {
+    @apply border-brass-200 bg-brass-50 text-brass-700;
   }
-  .panel-padded {
-    @apply panel p-5;
-  }
-  .panel-head {
-    @apply flex items-center justify-between border-b border-ink-200 px-5 py-3;
-  }
-  .label {
-    @apply text-[11px] uppercase tracking-[0.12em] text-ink-500 font-medium;
-  }
+
+  /* ——— 按鈕 ——— */
   .btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-ink-200
-           bg-white px-3 py-1.5 text-sm text-ink-700 transition
-           hover:border-ink-300 hover:bg-ink-100;
+    @apply relative inline-flex items-center gap-1.5 rounded-lg border border-ink-300/70
+           bg-[#fdfbf6] px-3.5 py-2 text-sm font-medium text-ink-700 transition-all duration-200
+           hover:border-brass-300 hover:text-brass-700 hover:shadow-sm
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-brass-400/50;
   }
-  .btn-active {
-    @apply !border-ink-900 !bg-ink-900 !text-white;
+  .btn-active, .btn-primary {
+    @apply !border-ink-900 !bg-ink-900 !text-ink-50 hover:!bg-ink-800 hover:!text-white;
   }
+  .btn-brass {
+    @apply !border-brass-500 !bg-brass-500 !text-white hover:!bg-brass-600;
+  }
+
+  /* ——— 輸入 ——— */
   .input {
-    @apply w-full rounded-md border border-ink-200 bg-white px-3 py-1.5 text-sm
-           focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent
-           disabled:bg-ink-50 disabled:text-ink-400;
+    @apply w-full rounded-lg border border-ink-200 bg-[#fdfbf6] px-3 py-2 text-sm text-ink-800
+           transition focus:outline-none focus:ring-2 focus:ring-brass-400/40 focus:border-brass-400
+           disabled:bg-ink-100 disabled:text-ink-400;
   }
+
+  /* ——— 表格 ——— */
   .table-clean th {
-    @apply text-left text-[11px] uppercase tracking-[0.1em] text-ink-500 font-medium
-           border-b border-ink-200 px-3 py-2 bg-ink-50;
+    @apply text-left text-[11px] uppercase tracking-[0.12em] text-ink-500 font-semibold
+           border-b border-ink-200 px-3 py-2.5 bg-ink-100/60;
   }
   .table-clean td {
-    @apply border-b border-ink-100 px-3 py-2 text-sm text-ink-800;
+    @apply border-b border-ink-100 px-3 py-2.5 text-sm text-ink-800;
   }
-  .table-clean tbody tr:hover { @apply bg-ink-50; }
+  .table-clean tbody tr { @apply transition-colors duration-150; }
+  .table-clean tbody tr:hover { @apply bg-brass-50/50; }
+
   .num-up   { @apply text-up font-mono; }
   .num-down { @apply text-down font-mono; }
+
+  /* ——— 背景 / 氛圍 ——— */
+  /* hero 用：程式生成漸層底 +（若存在）真實照片覆蓋。照片缺席時自動只顯示漸層。 */
+  .hero-atmosphere {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background-color: theme("colors.ink.900");
+    background-image:
+      linear-gradient(180deg, rgba(16,13,9,0.62) 0%, rgba(16,13,9,0.78) 100%),
+      var(--hero-photo),
+      radial-gradient(80% 120% at 80% 0%, rgba(184,134,44,0.35) 0%, transparent 55%),
+      radial-gradient(70% 100% at 0% 100%, rgba(122,83,29,0.30) 0%, transparent 60%),
+      linear-gradient(135deg, #2a251d 0%, #1c1813 50%, #100d09 100%);
+    background-size: cover, cover, cover, cover, cover;
+    background-position: center;
+  }
+  /* hero 細格線疊層 */
+  .hero-grid::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(rgba(230,207,148,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(230,207,148,0.07) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(70% 70% at 60% 30%, #000 0%, transparent 80%);
+  }
+
+  /* 區塊裝飾：頂端黃銅細線 */
+  .topline { @apply relative; }
+  .topline::before {
+    content: "";
+    @apply absolute left-0 top-0 h-0.5 w-12 bg-brass-500 rounded-full;
+  }
+
+  /* skeleton 載入閃光 */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, #efe8da 25%, #f6f1e6 37%, #efe8da 63%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
 }
 
-/* Recharts overrides — 讓圖更編輯部 */
-.recharts-cartesian-grid line { stroke: #e7e5e4; stroke-dasharray: 2 3; }
-.recharts-cartesian-axis-tick text { fill: #78716c; font-size: 11px; }
+@layer utilities {
+  /* 進場動畫：預設隱形，IntersectionObserver 加上 .is-in 後播放 */
+  .reveal { opacity: 0; }
+  .reveal.is-in { animation: fade-up 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+  .reveal-1.is-in { animation-delay: 0.06s; }
+  .reveal-2.is-in { animation-delay: 0.12s; }
+  .reveal-3.is-in { animation-delay: 0.18s; }
+  .reveal-4.is-in { animation-delay: 0.24s; }
+  .reveal-5.is-in { animation-delay: 0.30s; }
+  .reveal-6.is-in { animation-delay: 0.36s; }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+
+  /* 黃銅底線（hover 由左展開） */
+  .link-brass {
+    @apply relative text-brass-700 no-underline;
+  }
+  .link-brass::after {
+    content: "";
+    @apply absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 bg-brass-500 transition-transform duration-300;
+  }
+  .link-brass:hover::after { @apply scale-x-100; }
+}
+
+/* ——— Recharts 微調：暖色編輯部 ——— */
+.recharts-cartesian-grid line { stroke: #e3dac8; stroke-dasharray: 2 4; }
+.recharts-cartesian-axis-tick text { fill: #7d7361; font-size: 11px; }
 .recharts-tooltip-wrapper { outline: none; }
+.recharts-default-tooltip { border-radius: 8px !important; }
+
+/* 尊重減少動態偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; }
+}

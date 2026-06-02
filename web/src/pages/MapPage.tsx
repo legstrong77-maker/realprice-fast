@@ -89,7 +89,7 @@ const POI_STYLE: Record<PoiLayer, {
   icon: string;
   source: string;
 }> = {
-  stations: { label: "車站", color: "#1d4ed8", icon: "🚇", source: "stations" },
+  stations: { label: "車站", color: "#b8862c", icon: "🚇", source: "stations" },
   schools:  { label: "學校", color: "#047857", icon: "🎓", source: "schools" },
   nimby:    { label: "嫌惡設施", color: "#b91c1c", icon: "⚠", source: "nimby" },
 };
@@ -455,7 +455,7 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
         const tip = document.createElement("div");
         tip.style.cssText = `
           position:absolute;left:50%;top:-8px;transform:translate(-50%,-100%);
-          background:#1c1917;color:#fff;padding:6px 10px;border-radius:6px;
+          background:#1c1813;color:#fff;padding:6px 10px;border-radius:6px;
           font:500 12px Inter,'Noto Sans TC',sans-serif;white-space:nowrap;
           box-shadow:0 4px 14px rgba(0,0,0,.3);pointer-events:none;
           opacity:0;transition:opacity .12s;
@@ -1063,7 +1063,7 @@ function priceRange(prices: (number | null)[]): { min: number; max: number } {
 }
 
 function colorFor(price: number | null, stats: { min: number; max: number }): string {
-  if (!price) return "#a8a29e";
+  if (!price) return "#a99e86";
   const t = (price - stats.min) / Math.max(1, stats.max - stats.min);
   if (t < 0.5) return interpolate("#0e7490", "#d97706", t / 0.5);
   return interpolate("#d97706", "#b91c1c", (t - 0.5) / 0.5);

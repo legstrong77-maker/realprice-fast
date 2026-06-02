@@ -249,18 +249,18 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
                   ...m,
                   median_wan: m.median_unit_price_ping ? m.median_unit_price_ping / 10000 : null,
                 }))} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke="#e7e5e4" vertical={false} />
-                  <XAxis dataKey="month" stroke="#a8a29e" tickFormatter={(s)=>s.slice(0,7)} />
-                  <YAxis yAxisId="left" stroke="#a8a29e" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#a8a29e" />
+                  <CartesianGrid stroke="#e3dac8" vertical={false} />
+                  <XAxis dataKey="month" stroke="#a99e86" tickFormatter={(s)=>s.slice(0,7)} />
+                  <YAxis yAxisId="left" stroke="#a99e86" />
+                  <YAxis yAxisId="right" orientation="right" stroke="#a99e86" />
                   <Tooltip
-                    contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                    contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                     formatter={(v: any, k: string) =>
                       k === "median_wan" ? [`${(+v).toFixed(1)} 萬/坪`, "中位"] : [fmt(+v), "成交"]
                     }
                   />
-                  <Bar yAxisId="right" dataKey="deals" fill="#e7e5e4" />
-                  <Line yAxisId="left" type="monotone" dataKey="median_wan" stroke="#1d4ed8" strokeWidth={2} dot={false} />
+                  <Bar yAxisId="right" dataKey="deals" fill="#e3dac8" />
+                  <Line yAxisId="left" type="monotone" dataKey="median_wan" stroke="#b8862c" strokeWidth={2} dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             ) : (
@@ -396,18 +396,18 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
                 median_wan: b.median_unit_price_ping ? b.median_unit_price_ping / 10000 : null,
                 deals: b.deals,
               }))} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#e7e5e4" vertical={false} />
-                <XAxis dataKey="bucket" stroke="#a8a29e" />
-                <YAxis yAxisId="left" stroke="#a8a29e" />
-                <YAxis yAxisId="right" orientation="right" stroke="#a8a29e" />
+                <CartesianGrid stroke="#e3dac8" vertical={false} />
+                <XAxis dataKey="bucket" stroke="#a99e86" />
+                <YAxis yAxisId="left" stroke="#a99e86" />
+                <YAxis yAxisId="right" orientation="right" stroke="#a99e86" />
                 <Tooltip
-                  contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                  contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                   formatter={(v: any, k: string) =>
                     k === "median_wan" ? [`${(+v).toFixed(1)} 萬/坪`, "中位"] : [fmt(+v), "成交數"]
                   }
                 />
-                <Bar yAxisId="right" dataKey="deals" fill="#e7e5e4" />
-                <Line yAxisId="left" type="monotone" dataKey="median_wan" stroke="#1d4ed8" strokeWidth={2} dot />
+                <Bar yAxisId="right" dataKey="deals" fill="#e3dac8" />
+                <Line yAxisId="left" type="monotone" dataKey="median_wan" stroke="#b8862c" strokeWidth={2} dot />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -466,14 +466,14 @@ export default function RegionPage({ meta }: { meta: Meta | null }) {
                 lo: b.lo / 10000,
                 n: b.n,
               }))}>
-                <CartesianGrid stroke="#e7e5e4" vertical={false} />
-                <XAxis dataKey="lo" tickFormatter={(v)=>`${v}`} stroke="#a8a29e" />
-                <YAxis stroke="#a8a29e" />
+                <CartesianGrid stroke="#e3dac8" vertical={false} />
+                <XAxis dataKey="lo" tickFormatter={(v)=>`${v}`} stroke="#a99e86" />
+                <YAxis stroke="#a99e86" />
                 <Tooltip
-                  contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                  contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                   formatter={(v: any, _k, p: any) => [`${fmt(+v)} 筆`, `${p.payload.lo}~${p.payload.lo+10} 萬/坪`]}
                 />
-                <Bar dataKey="n" fill="#1d4ed8" />
+                <Bar dataKey="n" fill="#b8862c" />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

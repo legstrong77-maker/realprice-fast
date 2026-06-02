@@ -119,23 +119,23 @@ export default function YieldPage({ meta }: { meta: Meta | null }) {
           <ResponsiveContainer>
             <BarChart data={countyYields.map(d => ({ name: d.name, 投報: +(d.y! * 100).toFixed(2), code: d.code }))}
                       layout="vertical" margin={{ top: 4, right: 40, left: 8, bottom: 4 }}>
-              <CartesianGrid stroke="#e7e5e4" horizontal={false} />
-              <XAxis type="number" stroke="#a8a29e" tickFormatter={(v) => `${v}%`} />
-              <YAxis type="category" dataKey="name" stroke="#a8a29e" width={56} tick={{ fontSize: 12 }} />
+              <CartesianGrid stroke="#e3dac8" horizontal={false} />
+              <XAxis type="number" stroke="#a99e86" tickFormatter={(v) => `${v}%`} />
+              <YAxis type="category" dataKey="name" stroke="#a99e86" width={56} tick={{ fontSize: 12 }} />
               <Tooltip
-                contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                 formatter={(v: any) => [`${v}%`, "年化投報"]}
               />
               <Bar dataKey="投報" radius={[0, 3, 3, 0]}>
                 {countyYields.map((d) => (
-                  <Cell key={d.code} fill={d.code === cc ? "#1d4ed8" : "#a8a29e"}
+                  <Cell key={d.code} fill={d.code === cc ? "#b8862c" : "#a99e86"}
                         cursor="pointer" onClick={() => setCc(d.code)} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <p className="mt-2 text-xs text-ink-500">點任一條（藍＝目前選定縣市）可切換到該縣市的鄉鎮明細。</p>
+        <p className="mt-2 text-xs text-ink-500">點任一條（金色＝目前選定縣市）可切換到該縣市的鄉鎮明細。</p>
       </Section>
 
       {/* 縣市內鄉鎮排行 */}

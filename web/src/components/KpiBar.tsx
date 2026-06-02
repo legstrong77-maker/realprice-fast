@@ -11,20 +11,21 @@ export function Kpi({
   const color =
     accent === "up" ? "text-up"
     : accent === "down" ? "text-down"
+    : accent === "default" ? "text-brass-600"
     : "text-ink-900";
 
   return (
-    <div className="px-5 py-4">
+    <div className="group relative px-5 py-4 transition-colors duration-200 hover:bg-brass-50/40">
       <div className="label">{label}</div>
-      <div className={`mt-1.5 stat-num text-2xl ${color}`}>{value}</div>
-      {sub && <div className="mt-1 text-xs text-ink-500">{sub}</div>}
+      <div className={`mt-2 stat-num text-[26px] leading-none ${color}`}>{value}</div>
+      {sub && <div className="mt-1.5 text-xs text-ink-500">{sub}</div>}
     </div>
   );
 }
 
 export function KpiBar({ children }: { children: ReactNode }) {
   return (
-    <div className="panel grid grid-cols-2 divide-x divide-ink-200 md:grid-cols-4">
+    <div className="panel grid grid-cols-2 divide-x divide-y divide-ink-200/70 overflow-hidden md:grid-cols-4 md:divide-y-0">
       {children}
     </div>
   );

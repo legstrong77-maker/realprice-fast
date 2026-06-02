@@ -384,11 +384,11 @@ export default function DashboardPage({ meta }: { meta: Meta | null }) {
               }))}
               margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
             >
-              <CartesianGrid stroke="#e7e5e4" vertical={false} />
-              <XAxis dataKey="name" stroke="#a8a29e" />
-              <YAxis stroke="#a8a29e" />
+              <CartesianGrid stroke="#e3dac8" vertical={false} />
+              <XAxis dataKey="name" stroke="#a99e86" />
+              <YAxis stroke="#a99e86" />
               <Tooltip
-                contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                 formatter={(v: any) => [`${fmt(+v)} 萬`, "估算總價"]}
               />
               <Bar dataKey="total" radius={[4, 4, 0, 0]}>

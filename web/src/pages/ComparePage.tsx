@@ -12,7 +12,7 @@ import { clearShortlist, removeShortlist, useShortlist } from "../lib/shortlist"
 
 type Pick = { county: string; district: string };
 
-const COLORS = ["#1d4ed8", "#047857", "#b45309", "#9333ea", "#0e7490"];
+const COLORS = ["#b8862c", "#047857", "#b45309", "#9333ea", "#0e7490"];
 
 export default function ComparePage({ meta }: { meta: Meta | null }) {
   const [dk, setDk] = useState<DealKind>("sale");
@@ -279,11 +279,11 @@ export default function ComparePage({ meta }: { meta: Meta | null }) {
           {merged.length ? (
             <ResponsiveContainer>
               <LineChart data={merged} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                <CartesianGrid stroke="#e7e5e4" vertical={false} />
-                <XAxis dataKey="month" stroke="#a8a29e" />
-                <YAxis stroke="#a8a29e" tickFormatter={(v: any)=>`${(+v).toFixed(0)}`} />
+                <CartesianGrid stroke="#e3dac8" vertical={false} />
+                <XAxis dataKey="month" stroke="#a99e86" />
+                <YAxis stroke="#a99e86" tickFormatter={(v: any)=>`${(+v).toFixed(0)}`} />
                 <Tooltip
-                  contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                  contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                   formatter={(v: any) => [`${(+v).toFixed(1)} 萬/坪`, ""]}
                   labelFormatter={(label: any) => label}
                 />

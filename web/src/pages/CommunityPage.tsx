@@ -212,14 +212,14 @@ function BuildingCard({ b, open, onToggle }: { b: Building; open: boolean; onTog
             <div className="h-[200px]">
               <ResponsiveContainer>
                 <LineChart data={trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid stroke="#e7e5e4" vertical={false} />
-                  <XAxis dataKey="month" stroke="#a8a29e" tick={{ fontSize: 11 }} />
-                  <YAxis stroke="#a8a29e" tickFormatter={(v) => `${v}`} tick={{ fontSize: 11 }} />
+                  <CartesianGrid stroke="#e3dac8" vertical={false} />
+                  <XAxis dataKey="month" stroke="#a99e86" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#a99e86" tickFormatter={(v) => `${v}`} tick={{ fontSize: 11 }} />
                   <Tooltip
-                    contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                    contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                     formatter={(v: any) => [`${v} 萬/坪`, "同棟中位"]}
                   />
-                  <Line type="monotone" dataKey="單價" stroke="#1d4ed8" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="單價" stroke="#b8862c" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

@@ -120,17 +120,17 @@ export default function CalcPage() {
               利息: Math.round(a.interest_paid),
               剩餘本金: Math.round(a.balance),
             }))} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-              <CartesianGrid stroke="#e7e5e4" vertical={false} />
-              <XAxis dataKey="year" stroke="#a8a29e" />
-              <YAxis yAxisId="left" stroke="#a8a29e" tickFormatter={(v)=>`${(v/10000).toFixed(0)}萬`} />
-              <YAxis yAxisId="right" orientation="right" stroke="#a8a29e" tickFormatter={(v)=>`${(v/10000).toFixed(0)}萬`} />
+              <CartesianGrid stroke="#e3dac8" vertical={false} />
+              <XAxis dataKey="year" stroke="#a99e86" />
+              <YAxis yAxisId="left" stroke="#a99e86" tickFormatter={(v)=>`${(v/10000).toFixed(0)}萬`} />
+              <YAxis yAxisId="right" orientation="right" stroke="#a99e86" tickFormatter={(v)=>`${(v/10000).toFixed(0)}萬`} />
               <Tooltip
-                contentStyle={{ background: "#1c1917", border: "none", color: "#fafaf9", fontSize: 12, borderRadius: 6 }}
+                contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
                 formatter={(v: any, k: string) => [`${fmt(+v)} 元`, k]}
               />
-              <Bar yAxisId="left" dataKey="本金" stackId="a" fill="#1d4ed8" />
+              <Bar yAxisId="left" dataKey="本金" stackId="a" fill="#b8862c" />
               <Bar yAxisId="left" dataKey="利息" stackId="a" fill="#fca5a5" />
-              <Line yAxisId="right" type="monotone" dataKey="剩餘本金" stroke="#1c1917" strokeWidth={2} dot={false} />
+              <Line yAxisId="right" type="monotone" dataKey="剩餘本金" stroke="#1c1813" strokeWidth={2} dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

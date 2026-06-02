@@ -8,6 +8,7 @@ import { fmt, fmtPing, fmtWan } from "../lib/format";
 import { KpiBar, Kpi } from "../components/KpiBar";
 import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
+import CountUp from "../components/CountUp";
 
 export default function HomePage({ meta }: { meta: Meta | null }) {
   const [dk, setDk] = useState<DealKind>("sale");
@@ -30,36 +31,40 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
 
   return (
     <div className="space-y-8">
-      {/* —— Lead —— */}
-      <section className="panel">
-        <div className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-[1.4fr_1fr]">
+      {/* —— Hero —— */}
+      <section className="hero-atmosphere hero-grid animate-scale-in rounded-2xl">
+        <div className="grid grid-cols-1 gap-8 px-6 py-12 lg:grid-cols-[1.5fr_1fr] lg:px-12 lg:py-16">
           <div>
-            <div className="label">Issue · {meta?.generated_at?.slice(0, 10) ?? "—"}</div>
-            <h1 className="mt-3 font-serif text-4xl leading-tight text-ink-900 lg:text-5xl">
-              台灣全 22 縣市不動產的<br/>
-              <span className="text-accent">公開成交數據</span>，<br/>
-              在這個瀏覽器裡跑。
+            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-brass-300">
+              Issue · {meta?.generated_at?.slice(0, 10) ?? "—"}
+            </div>
+            <h1 className="display mt-5 text-[40px] text-ink-50 text-balance lg:text-[58px]">
+              台灣 22 縣市的<br/>
+              <span className="display-italic text-brass-300">公開成交數據</span>，<br/>
+              在這瀏覽器裡跑。
             </h1>
-            <p className="mt-4 max-w-xl text-[15px] leading-7 text-ink-600">
-              所有資料來自內政部實價登錄 Open Data，每旬公告即更新。
-              本站把全部聚合預先烘成靜態檔，
-              查詢以 CDN 速度回應，不依賴任何後端。
+            <p className="mt-6 max-w-xl text-[15px] leading-7 text-ink-200/90">
+              資料來自內政部實價登錄 Open Data，每旬公告即更新。
+              本站把全部聚合預先烘成靜態檔，查詢以 CDN 邊緣速度回應，不依賴任何後端。
             </p>
-            <div className="mt-6 flex gap-2">
-              <Link to="/region" className="btn btn-active">縣市深掘 →</Link>
-              <Link to="/browse" className="btn">看最新成交</Link>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/dashboard" className="btn btn-brass">開始找候選區 →</Link>
+              <Link to="/region"
+                className="btn !border-white/25 !bg-white/5 !text-ink-50 backdrop-blur-sm hover:!border-brass-300 hover:!bg-white/10 hover:!text-brass-200">
+                縣市深掘
+              </Link>
             </div>
           </div>
 
-          {/* 邊欄報頭資訊 */}
-          <div className="rounded-md border border-ink-200 bg-ink-50 p-5">
-            <div className="label mb-3">本期摘要</div>
+          {/* 本期摘要 — 半透明玻璃卡 */}
+          <div className="rounded-xl border border-white/12 bg-white/[0.06] p-5 backdrop-blur-md shadow-inset">
+            <div className="kicker mb-4 text-brass-300 [&::before]:bg-brass-300/60">本期摘要</div>
             <dl className="space-y-3 text-sm">
-              <Item k="覆蓋縣市" v={`${meta?.counties.length ?? 6} 個`} />
-              <Item k="買賣最新成交日" v={meta?.last_deal_date?.sale ?? "—"} mono />
-              <Item k="預售最新成交日" v={meta?.last_deal_date?.presale ?? "—"} mono />
-              <Item k="租賃最新成交日" v={meta?.last_deal_date?.rent ?? "—"} mono />
-              <Item k="資料烘製時間" v={meta?.generated_at?.replace("T", " ") ?? "—"} mono />
+              <Item k="覆蓋縣市" v={`${meta?.counties.length ?? 22} 個`} />
+              <Item k="買賣最新成交" v={meta?.last_deal_date?.sale ?? "—"} mono />
+              <Item k="預售最新成交" v={meta?.last_deal_date?.presale ?? "—"} mono />
+              <Item k="租賃最新成交" v={meta?.last_deal_date?.rent ?? "—"} mono />
+              <Item k="資料烘製時間" v={meta?.generated_at?.replace("T", " ").slice(0, 16) ?? "—"} mono />
             </dl>
           </div>
         </div>
@@ -67,24 +72,24 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
 
       {/* —— 全景 KPI —— */}
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-2xl text-ink-900">全台全景</h2>
+        <h2 className="font-serif text-2xl text-ink-900 topline pt-3">全台全景</h2>
         <DealKindTabs value={dk} onChange={setDk} />
       </div>
 
       <KpiBar>
-        <Kpi label="總成交筆數" value={fmt(totalDeals)} sub="近年累積" />
+        <Kpi label="總成交筆數" value={<CountUp value={totalDeals} />} sub="近年累積" />
         <Kpi label="全台中位均價"
-             value={medianAvg ? `${fmtPing(medianAvg)} 萬/坪` : "—"}
-             sub="各縣市中位之平均" />
+             value={<CountUp value={medianAvg ? medianAvg / 10000 : null} format={(n) => `${n.toFixed(1)} 萬/坪`} />}
+             sub="各縣市中位之平均" accent="default" />
         <Kpi
           label="最高均價"
-          value={top ? `${fmtPing(top.median_unit_price_ping)} 萬/坪` : "—"}
-          sub={top?.county_name}
+          value={<CountUp value={top?.median_unit_price_ping ? top.median_unit_price_ping / 10000 : null} format={(n) => `${n.toFixed(1)}`} />}
+          sub={top ? `${top.county_name} · 萬/坪` : ""}
         />
         <Kpi
           label="最低均價"
-          value={bottom ? `${fmtPing(bottom.median_unit_price_ping)} 萬/坪` : "—"}
-          sub={bottom?.county_name}
+          value={<CountUp value={bottom?.median_unit_price_ping ? bottom.median_unit_price_ping / 10000 : null} format={(n) => `${n.toFixed(1)}`} />}
+          sub={bottom ? `${bottom.county_name} · 萬/坪` : ""}
         />
       </KpiBar>
 
@@ -104,22 +109,23 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
               }))}
               margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
             >
-              <XAxis dataKey="name" stroke="#a8a29e" tickLine={false} axisLine={false} />
-              <YAxis stroke="#a8a29e" tickLine={false} axisLine={false} width={40} />
+              <XAxis dataKey="name" stroke="#a99e86" tickLine={false} axisLine={false} />
+              <YAxis stroke="#a99e86" tickLine={false} axisLine={false} width={40} />
               <Tooltip
                 contentStyle={{
-                  background: "#1c1917", border: "none",
-                  fontSize: 12, color: "#fafaf9", borderRadius: 6,
+                  background: "#1c1813", border: "none",
+                  fontSize: 12, color: "#f8f4ec", borderRadius: 6,
                 }}
                 formatter={(v: any) => [`${(+v).toFixed(1)} 萬/坪`, "中位"]}
               />
-              <Bar dataKey="median" radius={[4, 4, 0, 0]}>
+              <Bar dataKey="median" radius={[4, 4, 0, 0]}
+                   activeBar={{ fill: "#b8862c", stroke: "#9a6c22" }}>
                 {rows.map((_, i) => {
                   const t = rows.length > 1 ? i / (rows.length - 1) : 0;
-                  // 從 ink-900 → ink-400
-                  const lightness = 28 + t * 50;
+                  // 深墨 → 暖中灰（收窄範圍，最淺也維持在暖紙底上看得見）
+                  const lightness = 24 + t * 34;
                   return (
-                    <Cell key={i} fill={`hsl(20, 6%, ${lightness}%)`} />
+                    <Cell key={i} fill={`hsl(34, 14%, ${lightness}%)`} />
                   );
                 })}
               </Bar>
@@ -171,9 +177,9 @@ export default function HomePage({ meta }: { meta: Meta | null }) {
 
 function Item({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-dotted border-ink-200 pb-2">
-      <dt className="text-ink-500">{k}</dt>
-      <dd className={mono ? "stat-num text-ink-900" : "text-ink-900"}>{v}</dd>
+    <div className="flex items-baseline justify-between border-b border-white/10 pb-2 last:border-0">
+      <dt className="text-ink-300/80">{k}</dt>
+      <dd className={mono ? "stat-num text-ink-50" : "text-ink-50"}>{v}</dd>
     </div>
   );
 }

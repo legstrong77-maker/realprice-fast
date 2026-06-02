@@ -13,11 +13,14 @@ export default function DealKindTabs({
   onChange: (v: DealKind) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-md border border-ink-200 bg-white p-1">
+    <div className="inline-flex items-center gap-0.5 rounded-lg border border-ink-200 bg-ink-100/60 p-1">
       {(["sale", "presale", "rent"] as DealKind[]).map((k) => (
         <button
           key={k}
-          className={`btn !border-transparent ${value === k ? "btn-active" : ""}`}
+          className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200
+            ${value === k
+              ? "bg-ink-900 text-ink-50 shadow-sm"
+              : "text-ink-500 hover:text-brass-700"}`}
           onClick={() => onChange(k)}
         >
           {LABELS[k]}
