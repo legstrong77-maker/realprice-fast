@@ -7,6 +7,40 @@ import DealKindTabs from "../components/DealKindTabs";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
 
+/** 把目前篩選的成交匯出成 CSV（含 UTF-8 BOM，Excel 可正確讀中文）。 */
+function exportCsv(rows: RecentRow[], filename: string) {
+  const cols: [string, (r: RecentRow) => string | number | null | undefined][] = [
+    ["成交日", r => r.deal_date],
+    ["鄉鎮", r => r.district],
+    ["地址", r => r.address ?? r.road ?? ""],
+    ["類型", r => r.building_type ?? ""],
+    ["坪數", r => r.building_area_sqm ? (r.building_area_sqm / 3.305785).toFixed(2) : ""],
+    ["移轉層", r => r.transfer_floor_num ?? ""],
+    ["總樓層", r => r.total_floors ?? ""],
+    ["屋齡", r => r.age_years ?? ""],
+    ["房", r => r.rooms ?? ""],
+    ["廳", r => r.halls ?? ""],
+    ["衛", r => r.baths ?? ""],
+    ["單價_萬每坪", r => r.unit_price_per_ping ? (r.unit_price_per_ping / 10000).toFixed(2) : ""],
+    ["總價_萬", r => r.total_price ? (r.total_price / 10000).toFixed(0) : ""],
+    ["特殊交易", r => r.is_special_deal ? "是" : ""],
+    ["備註", r => r.note ?? ""],
+  ];
+  const esc = (v: string | number | null | undefined) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const head = cols.map(c => c[0]).join(",");
+  const body = rows.map(r => cols.map(c => esc(c[1](r))).join(",")).join("\n");
+  const blob = new Blob(["﻿" + head + "\n" + body], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function BrowsePage({ meta }: { meta: Meta | null }) {
   const [cc, setCc] = useState("a");
   const [dk, setDk] = useState<DealKind>("sale");
@@ -35,6 +69,7 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
 
   const counties = meta?.counties ?? [];
   const districts = meta?.districts?.[cc] ?? [];
+  const countyName = counties.find(c => c.code === cc)?.name ?? cc;
 
   const filtered = useMemo(() => {
     let xs = rows;
@@ -125,10 +160,18 @@ export default function BrowsePage({ meta }: { meta: Meta | null }) {
         kicker="預烘 · 最近 2000 筆"
         title="近期成交"
         right={
-          <span className="text-xs text-ink-500">
-            顯示 <span className="stat-num text-ink-900">{fmt(filtered.length)}</span> /
-            共 <span className="stat-num text-ink-900">{fmt(rows.length)}</span> 筆
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-ink-500">
+              顯示 <span className="stat-num text-ink-900">{fmt(filtered.length)}</span> /
+              共 <span className="stat-num text-ink-900">{fmt(rows.length)}</span> 筆
+            </span>
+            <button
+              className="btn !text-xs !py-1 !px-2.5"
+              disabled={!filtered.length}
+              onClick={() => exportCsv(filtered, `realprice_${countyName}_${dk}`)}
+              title="把目前篩選的成交匯出成 CSV（可用 Excel 開）"
+            >⬇ 匯出 CSV</button>
+          </div>
         }
       >
         <div className="overflow-x-auto">

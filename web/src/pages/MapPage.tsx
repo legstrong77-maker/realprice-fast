@@ -94,6 +94,23 @@ const POI_STYLE: Record<PoiLayer, {
   nimby:    { label: "嫌惡設施", color: "#b91c1c", icon: "⚠", source: "nimby" },
 };
 
+/** 國土測繪中心（NLSC）免申請 WMTS — 全國級圖磚，GoogleMapsCompatible。 */
+const nlsc = (layer: string) =>
+  `https://wmts.nlsc.gov.tw/wmts/${layer}/default/GoogleMapsCompatible/{z}/{y}/{x}`;
+
+type BasemapId = "osm" | "emap" | "photo";
+const BASEMAPS: { id: BasemapId; label: string; icon: string; tiles: string; attribution: string }[] = [
+  { id: "osm",   label: "街道",   icon: "🗺", tiles: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "© OpenStreetMap contributors" },
+  { id: "emap",  label: "電子地圖", icon: "🧭", tiles: nlsc("EMAP"),   attribution: "© 內政部國土測繪中心 NLSC" },
+  { id: "photo", label: "航照影像", icon: "🛰", tiles: nlsc("PHOTO2"), attribution: "© 內政部國土測繪中心 NLSC" },
+];
+
+type OverlayId = "luimap" | "landsect";
+const OVERLAYS: { id: OverlayId; label: string; tiles: string; desc: string }[] = [
+  { id: "luimap",   label: "土地使用", tiles: nlsc("LUIMAP"),   desc: "國土利用現況（住/商/工/農 概況）" },
+  { id: "landsect", label: "地籍圖",   tiles: nlsc("LANDSECT"), desc: "宗地界線（放大後較清楚）" },
+];
+
 export default function MapPage({ meta }: { meta: Meta | null }) {
   // 讀 URL 初始狀態（refresh / 分享連結進來會還原視角）
   const initial = useRef(readUrlState());
@@ -123,10 +140,16 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     stations: false, schools: false, nimby: false,
   });
 
+  // 政府圖磚：底圖切換 + 疊圖開關 + 透明度
+  const [basemap, setBasemap] = useState<BasemapId>("osm");
+  const [overlayOn, setOverlayOn] = useState<Record<OverlayId, boolean>>({ luimap: false, landsect: false });
+  const [overlayOpacity, setOverlayOpacity] = useState(0.6);
+
   const container = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const poiLayerInitRef = useRef(false);
+  const rasterInitRef = useRef(false);
 
   const counties = meta?.counties ?? [];
   const countyName = counties.find(c => c.code === cc)?.name ?? cc;
@@ -226,8 +249,30 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
     });
     map.addControl(new maplibregl.NavigationControl({}), "top-right");
     map.on("zoom", () => setZoom(map.getZoom()));
-    // 等 style 載完再加 POI source/layer
+    // 等 style 載完再加 政府圖磚 + POI source/layer
     map.on("load", () => {
+      // —— 政府底圖（NLSC WMTS）：emap / photo（osm 已在 style 內），預設隱藏 ——
+      BASEMAPS.filter(b => b.id !== "osm").forEach((b) => {
+        map.addSource(`base-${b.id}`, {
+          type: "raster", tiles: [b.tiles], tileSize: 256, attribution: b.attribution, maxzoom: 20,
+        });
+        map.addLayer({
+          id: `base-${b.id}`, type: "raster", source: `base-${b.id}`,
+          layout: { visibility: "none" },
+        });
+      });
+      // —— 政府疊圖（NLSC WMTS）：土地使用 / 地籍，預設隱藏 ——
+      OVERLAYS.forEach((o) => {
+        map.addSource(`ov-${o.id}`, {
+          type: "raster", tiles: [o.tiles], tileSize: 256, attribution: "© 內政部國土測繪中心 NLSC", maxzoom: 20,
+        });
+        map.addLayer({
+          id: `ov-${o.id}`, type: "raster", source: `ov-${o.id}`,
+          layout: { visibility: "none" }, paint: { "raster-opacity": 0.6 },
+        });
+      });
+      rasterInitRef.current = true;
+
       (Object.keys(POI_STYLE) as PoiLayer[]).forEach((k) => {
         const style = POI_STYLE[k];
         map.addSource(style.source, {
@@ -311,6 +356,26 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       if (m.getLayer(`${style.source}-label`)) m.setLayoutProperty(`${style.source}-label`, "visibility", vis);
     });
   }, [pois, poiOn, zoom]);
+
+  // 底圖切換：只顯示選中的那層
+  useEffect(() => {
+    const m = mapRef.current; if (!m || !rasterInitRef.current) return;
+    BASEMAPS.forEach((b) => {
+      const id = b.id === "osm" ? "osm" : `base-${b.id}`;
+      if (m.getLayer(id)) m.setLayoutProperty(id, "visibility", b.id === basemap ? "visible" : "none");
+    });
+  }, [basemap]);
+
+  // 疊圖開關 + 透明度
+  useEffect(() => {
+    const m = mapRef.current; if (!m || !rasterInitRef.current) return;
+    OVERLAYS.forEach((o) => {
+      const id = `ov-${o.id}`;
+      if (!m.getLayer(id)) return;
+      m.setLayoutProperty(id, "visibility", overlayOn[o.id] ? "visible" : "none");
+      m.setPaintProperty(id, "raster-opacity", overlayOpacity);
+    });
+  }, [overlayOn, overlayOpacity]);
 
   // 切縣市時飛過去
   useEffect(() => {
@@ -677,9 +742,48 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
           </div>
         </div>
 
+        {/* 底圖 + 政府疊圖（NLSC 全國圖磚） */}
+        <div className="flex flex-wrap items-center gap-2 text-sm pt-2 border-t border-ink-100">
+          <span className="text-xs text-ink-500 mr-1">底圖：</span>
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-ink-200 bg-ink-100/60 p-0.5">
+            {BASEMAPS.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => setBasemap(b.id)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+                  basemap === b.id ? "bg-ink-900 text-ink-50 shadow-sm" : "text-ink-500 hover:text-brass-700"
+                }`}
+                title={b.attribution}
+              >
+                {b.icon} {b.label}
+              </button>
+            ))}
+          </div>
+
+          <span className="ml-2 text-xs text-ink-500 mr-1">疊圖：</span>
+          {OVERLAYS.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setOverlayOn(s => ({ ...s, [o.id]: !s[o.id] }))}
+              title={o.desc}
+              className={`btn !text-xs !py-1 !px-2.5 ${overlayOn[o.id] ? "btn-brass" : ""}`}
+            >
+              {o.label}
+            </button>
+          ))}
+          {(overlayOn.luimap || overlayOn.landsect) && (
+            <label className="ml-1 flex items-center gap-1.5 text-[11px] text-ink-500">
+              透明度
+              <input type="range" min={0.2} max={1} step={0.05} value={overlayOpacity}
+                onChange={(e) => setOverlayOpacity(+e.target.value)} className="w-20" />
+            </label>
+          )}
+          <span className="ml-auto text-[10px] text-ink-400">圖磚 © 內政部國土測繪中心</span>
+        </div>
+
         {/* 圖層切換 */}
         <div className="flex flex-wrap items-center gap-2 text-sm pt-2 border-t border-ink-100">
-          <span className="text-xs text-ink-500 mr-2">圖層：</span>
+          <span className="text-xs text-ink-500 mr-2">標點：</span>
           {(Object.keys(POI_STYLE) as PoiLayer[]).map((k) => (
             <button
               key={k}
@@ -949,6 +1053,10 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
                   <KV k="中位總價 (萬)" v={fmtWan(roadRow.median_total_price)} />
                   <KV k="最後成交日" v={roadRow.last_deal_date ?? "—"} />
                 </dl>
+                {roadRow.lat != null && roadRow.lng != null && (
+                  <a href={streetView(roadRow.lat, roadRow.lng)} target="_blank" rel="noopener noreferrer"
+                     className="btn !text-xs mt-3 inline-flex">🛣 Google 街景看現場</a>
+                )}
 
                 {merged.length > 0 && (
                   <div className="mt-5">
@@ -1015,6 +1123,8 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
                     highlight={!!med}
                   />
                 </dl>
+                <a href={streetView(picked.row.lat, picked.row.lng)} target="_blank" rel="noopener noreferrer"
+                   className="btn !text-xs mt-3 inline-flex">🛣 Google 街景看現場</a>
                 {nearbyRoads.length > 0 && (
                   <div className="mt-4">
                     <div className="label mb-2">附近路段</div>
@@ -1046,6 +1156,10 @@ export default function MapPage({ meta }: { meta: Meta | null }) {
       </div>
     </div>
   );
+}
+
+function streetView(lat: number, lng: number): string {
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
 }
 
 function KV({ k, v, highlight = false }: { k: string; v: string; highlight?: boolean }) {
