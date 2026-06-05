@@ -49,6 +49,7 @@ export type BrokerBriefPayload = {
     asking_median_ping_wan: number | null;  // 萬/坪 開價中位（售屋平台 / 議價率回推）
     spread_pct: number | null;              // 0~1 議價空間 =(開價-成交)/開價
     listings_active: number | null;         // 在架量（待售物件數，實抓）
+    months_of_supply: number | null;        // 月供應量=在架÷月均成交（<3賣方市場，>6買方市場）
     sold_deals: number | null;              // 近期成交量
     method: "scrape" | "report";            // 開價來源：實抓 / 議價率回推
   };
@@ -73,6 +74,7 @@ export function buildBrokerBriefMessages(payload: BrokerBriefPayload) {
         "Do not invent specific transactions, addresses, future prices, school or transit facts.",
         "These are DISTRICT-LEVEL medians, not a specific unit; always note that condition/floor/parking/urgency move the real number.",
         "When the open-price source is 'report' (derived from an average negotiation rate), say the spread is a county-level estimate.",
+        "If months_of_supply is provided: <3 = seller's market, 3-6 = balanced, >6 = buyer has leverage. Use this to calibrate urgency.",
         "Output concrete, client-facing talking points in Traditional Chinese.",
       ].join(" "),
     },

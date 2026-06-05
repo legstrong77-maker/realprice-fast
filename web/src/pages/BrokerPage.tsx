@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { data, type Meta, type SpreadRow, type SpreadSummaryRow } from "../lib/data";
 import { fmtPing } from "../lib/format";
 import Section from "../components/Section";
@@ -12,20 +12,46 @@ import {
 const wan = (eluPing: number | null | undefined) =>
   eluPing != null ? +(eluPing / 10000).toFixed(1) : null;
 
+function calcMos(askingN: number | null, soldDeals: number): number | null {
+  if (askingN == null || askingN <= 0 || soldDeals <= 0) return null;
+  return +(askingN / (soldDeals / 12)).toFixed(1);
+}
+function mosLabel(mos: number | null): string {
+  if (mos == null) return "—";
+  if (mos < 3) return `${mos}個月 · 賣方市場`;
+  if (mos < 6) return `${mos}個月 · 均衡`;
+  if (mos < 12) return `${mos}個月 · 買方偏有利`;
+  return `${mos}個月 · 明顯供過`;
+}
+
 export default function BrokerPage({ meta }: { meta: Meta | null }) {
   const counties = meta?.counties ?? [];
-  const [cc, setCc] = useState("d");           // 預設台南（開價深耕）
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [cc, setCcState] = useState(searchParams.get("cc") ?? "d"); // 預設台南
   const [rows, setRows] = useState<SpreadRow[]>([]);
   const [nat, setNat] = useState<SpreadSummaryRow[]>([]);
-  const [district, setDistrict] = useState<string>("");
+  const [district, setDistrictState] = useState<string>(searchParams.get("district") ?? "");
   const [audience, setAudience] = useState<"owner" | "buyer">("owner");
   const [copied, setCopied] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
 
+  // URL 同步 helpers
+  const setCc = (v: string) => {
+    setCcState(v);
+    setDistrictState("");
+    setSearchParams((p) => { p.set("cc", v); p.delete("district"); return p; }, { replace: true });
+  };
+  const setDistrict = (v: string) => {
+    setDistrictState(v);
+    setSearchParams((p) => { if (v) p.set("district", v); else p.delete("district"); return p; }, { replace: true });
+  };
+
   useEffect(() => { data.spreadSummary().then(setNat).catch(() => setNat([])); }, []);
   useEffect(() => {
-    setDistrict("");
-    data.spread(cc).then(setRows).catch(() => setRows([]));
+    data.spread(cc).then((r) => {
+      setRows(r);
+      // URL 帶了 district 時，等資料載入後再設定（避免 rows 還空時 sel 為 null）
+    }).catch(() => setRows([]));
   }, [cc]);
 
   const ccName = counties.find((c) => c.code === cc)?.name ?? cc;
@@ -61,6 +87,7 @@ export default function BrokerPage({ meta }: { meta: Meta | null }) {
   const rankNote = rankIdx >= 0 ? `全台 ${ranked.length} 縣市議價空間第 ${rankIdx + 1} 大` : null;
 
   const sel = districts.find((r) => r.district === district) ?? null;
+  const selMos = sel ? calcMos(sel.asking_n, sel.sold_deals) : null;
 
   const payload: BrokerBriefPayload | null = useMemo(() => {
     if (!sel) return null;
@@ -74,6 +101,7 @@ export default function BrokerPage({ meta }: { meta: Meta | null }) {
         asking_median_ping_wan: wan(sel.asking_median_ping),
         spread_pct: sel.spread_pct,
         listings_active: sel.method === "scrape" ? sel.asking_n : null,
+        months_of_supply: selMos,
         sold_deals: sel.sold_deals,
         method: sel.method,
       },
@@ -161,7 +189,7 @@ export default function BrokerPage({ meta }: { meta: Meta | null }) {
         </div>
 
         {sel ? (
-          <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-5 grid gap-3 md:grid-cols-3 lg:grid-cols-5">
             <Metric label="成交中位" value={`${fmtPing(sel.sold_median_ping)} 萬/坪`} />
             <Metric label="開價中位" value={`${fmtPing(sel.asking_median_ping)} 萬/坪`}
                     tone={sel.method === "scrape" ? "up" : "default"} />
@@ -170,6 +198,11 @@ export default function BrokerPage({ meta }: { meta: Meta | null }) {
                     value={sel.method === "scrape"
                       ? `${(sel.asking_n ?? 0).toLocaleString()} 件`
                       : `${sel.sold_deals.toLocaleString()} 筆`} />
+            <Metric label="月供應量"
+                    value={selMos != null ? `${selMos} 個月` : "—"}
+                    sub={selMos != null
+                      ? selMos < 3 ? "賣方市場" : selMos < 6 ? "均衡" : selMos < 12 ? "買方偏有利" : "明顯供過"
+                      : "需實抓開價"} />
           </div>
         ) : (
           <p className="mt-4 text-sm text-ink-500">選一個區，下面會生成可交給 LLM 的委託簡報資料與 API 契約。</p>
@@ -209,14 +242,15 @@ export default function BrokerPage({ meta }: { meta: Meta | null }) {
   );
 }
 
-function Metric({ label, value, tone = "default" }: {
-  label: string; value: string; tone?: "up" | "down" | "default";
+function Metric({ label, value, tone = "default", sub }: {
+  label: string; value: string; tone?: "up" | "down" | "default"; sub?: string;
 }) {
   const tc = tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-ink-900";
   return (
     <div className="rounded-md border border-ink-200 bg-paper/60 p-4">
       <div className="label mb-1">{label}</div>
       <div className={`stat-num text-lg font-medium ${tc}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-ink-500">{sub}</div>}
     </div>
   );
 }

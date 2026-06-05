@@ -10,7 +10,7 @@ param(
     [switch]$Push,
     [switch]$Register,
     [switch]$Unregister,
-    [int]$MaxPages = 40
+    [int]$MaxPages = 0    # 0 = 沿用 asking.py 的 MAX_PAGES 常數（目前 400，抓到 last_page 才得真實在架量）
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,8 +40,13 @@ if ($Register) {
 Push-Location (Join-Path $root "pipeline")
 try {
     $env:PYTHONPATH = "src"
-    Write-Host ">>> realprice asking --max-pages $MaxPages" -ForegroundColor Cyan
-    python -m realprice asking --max-pages $MaxPages
+    if ($MaxPages -gt 0) {
+        Write-Host ">>> realprice asking --max-pages $MaxPages" -ForegroundColor Cyan
+        python -m realprice asking --max-pages $MaxPages
+    } else {
+        Write-Host ">>> realprice asking（使用預設 MAX_PAGES，抓到 last_page）" -ForegroundColor Cyan
+        python -m realprice asking
+    }
 }
 finally { Pop-Location }
 
@@ -49,10 +54,12 @@ finally { Pop-Location }
 if ($Push) {
     Push-Location $root
     try {
-        git add web/public/data/spread web/public/data/spread-summary.json
+        git add web/public/data/spread web/public/data/spread-summary.json `
+                web/public/data/spread-trend web/public/data/asking-history `
+                data/asking data/asking-history
         $stamp = Get-Date -Format "yyyy-MM-dd"
         # 沒有變更時 git commit 會非 0 結束；包起來避免中斷排程
-        git commit -m "data: refresh 議價空間 開價聚合 ($stamp)" 2>$null
+        git commit -m "data: refresh 議價空間 + 開價歷史 ($stamp)" 2>$null
         if ($LASTEXITCODE -eq 0) {
             git push
             Write-Host "[ok] 已 push，Cloudflare 將自動部署" -ForegroundColor Green

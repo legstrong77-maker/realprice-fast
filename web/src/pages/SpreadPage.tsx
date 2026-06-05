@@ -8,6 +8,20 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
+/** 月供應量（去化速度）：在架量 / 月均成交量。<3 = 賣方市場；>6 = 買方市場。 */
+function calcMos(askingN: number | null, soldDeals: number): number | null {
+  if (askingN == null || askingN <= 0 || soldDeals <= 0) return null;
+  const monthlyRate = soldDeals / 12;
+  return +(askingN / monthlyRate).toFixed(1);
+}
+function mosTone(mos: number | null): { label: string; tone: string } {
+  if (mos == null) return { label: "—", tone: "text-ink-400" };
+  if (mos < 3) return { label: "賣方市場", tone: "text-down" };
+  if (mos < 6) return { label: "均衡", tone: "text-ink-900" };
+  if (mos < 12) return { label: "買方偏有利", tone: "text-up" };
+  return { label: "明顯供過於求", tone: "text-up font-medium" };
+}
+
 /** 議價空間分級（買方可砍價空間 / 賣方該預留的議價彈性）。 */
 function spreadTone(p: number | null): { label: string; tone: string } {
   if (p == null) return { label: "—", tone: "text-ink-400" };
@@ -160,6 +174,7 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                 <th className="text-right">成交中位（萬/坪）</th>
                 <th className="text-right">成交量</th>
                 <th className="text-right">在架量</th>
+                <th className="text-right">月供應量</th>
                 <th className="text-right">來源</th>
               </tr>
             </thead>
@@ -184,6 +199,15 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                       {r.asking_n != null ? r.asking_n.toLocaleString() : "—"}
                     </td>
                     <td className="text-right">
+                      {(() => {
+                        const mos = calcMos(r.asking_n, r.sold_deals);
+                        const mt = mosTone(mos);
+                        return mos != null
+                          ? <span className={`text-sm ${mt.tone}`}>{mos} 個月</span>
+                          : <span className="text-ink-400">—</span>;
+                      })()}
+                    </td>
+                    <td className="text-right">
                       {r.method === "scrape"
                         ? <span className="rounded bg-up/10 px-1.5 py-0.5 text-[11px] text-up">實抓開價{r.asking_n ? `·${r.asking_n}筆` : ""}</span>
                         : <span className="rounded bg-ink-200/60 px-1.5 py-0.5 text-[11px] text-ink-500">議價率推估</span>}
@@ -192,7 +216,7 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                 );
               })}
               {districts.length === 0 && (
-                <tr><td colSpan={8} className="py-8 text-center text-ink-400">此縣市暫無資料。</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-ink-400">此縣市暫無資料。</td></tr>
               )}
             </tbody>
           </table>
@@ -267,6 +291,7 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
           <li>標「<strong>議價率推估</strong>」的列，是用該縣市公布的<strong>平均議價率</strong>回推開價（縣市級，同縣市各區一致）；標「<strong>實抓開價</strong>」的列，是用實際蒐集到的該區<strong>開價中位</strong>直接比對（區級、更精準）。</li>
           <li>這是<strong>區域中位</strong>的概估，<strong>不是</strong>任何單一物件的可砍幅度。實際議價受屋況、樓層、車位、賣方急迫度、是否含裝潢影響很大。</li>
           <li>議價空間大不等於「便宜」—— 可能是該區<strong>開價普遍偏高</strong>或去化較慢；要搭配成交價趨勢與成交量一起看。</li>
+          <li><strong>月供應量</strong>＝在架量 ÷ 月均成交量（近12月成交 ÷ 12）。&lt;3 個月＝供不應求（賣方市場），3–6＝均衡，&gt;6＝供給充足（買方偏有利），&gt;12＝明顯供過於求。此指標需要同一個區同時有實抓開價（在架量）與成交資料，台南以外多半顯示「—」。</li>
           <li>成交資料來自內政部實價登錄；開價資料僅供市場參考，不構成出價、訂價或投資建議。</li>
         </ul>
       </Section>
