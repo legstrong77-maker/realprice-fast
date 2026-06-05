@@ -196,6 +196,26 @@ export interface SpreadSummaryRow {
   source: string | null;
 }
 
+/** 開價趨勢：每區開價中位的時間序列（asking.py 每次抓完 append 一個帶日期的點）。 */
+export interface AskingHistoryPoint {
+  date: string;                  // YYYY-MM-DD
+  asking_median_ping: number;    // 元/坪
+  n: number;                     // 當次該區樣本數
+  p25: number | null;
+  p75: number | null;
+}
+export interface AskingHistory {
+  updated?: string;
+  districts: Record<string, AskingHistoryPoint[]>;
+}
+
+/** 開價 vs 成交 月線（spread-trend/{cc}.json）。成交來自實價登錄，開價來自 asking-history（累積）。 */
+export interface SpreadTrend {
+  months: string[];                 // "YYYY-MM"
+  sold: (number | null)[];          // 元/坪，縣市月度成交中位（成交量加權）
+  asking: (number | null)[];        // 元/坪，縣市月度開價中位（無抓取的月份為 null）
+}
+
 export interface RoadHistoryDeal {
   district: string;
   address: string | null;
@@ -234,6 +254,8 @@ export const data = {
                   fetchJSON<Record<string, RoadHistoryDeal[]>>(`/road-history/${cc}.json`),
   spread:      (cc: string) => fetchJSON<SpreadRow[]>(`/spread/${cc}.json`),
   spreadSummary: () => fetchJSON<SpreadSummaryRow[]>("/spread-summary.json"),
+  askingHistory: (cc: string) => fetchJSON<AskingHistory>(`/asking-history/${cc}.json`),
+  spreadTrend: (cc: string) => fetchJSON<SpreadTrend>(`/spread-trend/${cc}.json`),
   pois:        (kind: "stations" | "schools" | "nimby") =>
                   fetchJSON<POI[]>(`/poi/${kind}.json`),
 };

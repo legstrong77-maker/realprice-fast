@@ -22,20 +22,26 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import date
 from pathlib import Path
 from statistics import median, quantiles
 
 import httpx
 from loguru import logger
 
-from .config import DATA_DIR, METRO_CODES, SQM_PER_PING
+from .config import DATA_DIR, METRO_CODES, SQM_PER_PING, WEB_PUBLIC_DIR
 
 ASKING_DIR = DATA_DIR / "asking"
+# 開價趨勢用：每區開價中位的「時間序列」（純彙總，append 累積、同日覆蓋）。
+# 來源真相在 data/，並鏡像到 web/public/data/ 供前端直接 fetch。
+ASKING_HISTORY_DIR = DATA_DIR / "asking-history"
+WEB_ASKING_HISTORY_DIR = WEB_PUBLIC_DIR / "asking-history"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
 HEADERS = {"User-Agent": UA, "Accept-Language": "zh-TW,zh;q=0.9"}
 
-# 每縣市最多抓幾頁（每頁約 20 筆）——區域中位不需全量，取樣本即穩定。會 log 實際抓到幾筆。
-MAX_PAGES = 40
+# 抓幾頁（每頁約 20 筆）。程式會在 API 回報的 last_page 自動停，故設高一點以涵蓋全量。
+# 待售量(在架量)趨勢要可信，必須抓到全量 last_page —— 固定小樣本的「在架量」每次都一樣、趨勢是假的。
+MAX_PAGES = 400
 REQ_DELAY = 0.8          # 禮貌性延遲（秒）
 MIN_N = 5               # 每區最少幾筆才出數
 # 單價合理範圍（元/坪）——沿用站內品質規則精神
@@ -98,6 +104,9 @@ def fetch_singfujia(max_pages: int = MAX_PAGES) -> dict[tuple[str, str], list[fl
                     break
                 lst = json.loads(m.group(1))["props"]["pageProps"]["listAPI"]["list"]
                 rows = lst.get("data") or []
+                if page == 1:
+                    logger.info(f"[asking] 幸福家全站在架量 total={lst.get('total')} "
+                                f"last_page={lst.get('last_page')}（將抓到 last_page 為止）")
             except Exception as e:
                 logger.warning(f"[asking] 幸福家 page {page} 失敗：{e}")
                 break
@@ -228,9 +237,48 @@ def _merge(*bucket_dicts: dict[tuple[str, str], list[float]]) -> dict[tuple[str,
     return merged
 
 
+def _append_history(by_cc: dict[str, list[dict]], today: str) -> None:
+    """把本次「每區開價中位」append 成帶日期的時間序列（開價趨勢線用，純彙總）。
+
+    寫到 data/asking-history/{cc}.json（真相）+ 鏡像到 web/public/data/asking-history/{cc}.json。
+    同一天重跑會覆蓋當日該區的點（idempotent）—— 避免同日多跑灌出重複資料點。
+    """
+    for outdir in (ASKING_HISTORY_DIR, WEB_ASKING_HISTORY_DIR):
+        outdir.mkdir(parents=True, exist_ok=True)
+    for cc, rows in by_cc.items():
+        if not rows:
+            continue
+        hist_path = ASKING_HISTORY_DIR / f"{cc}.json"
+        if hist_path.exists():
+            try:
+                hist = json.loads(hist_path.read_text(encoding="utf-8"))
+            except Exception:
+                hist = {}
+        else:
+            hist = {}
+        districts: dict[str, list[dict]] = hist.setdefault("districts", {})
+        for r in rows:
+            d = r["district"]
+            series = [p for p in districts.get(d, []) if p.get("date") != today]  # 同日覆蓋
+            series.append({
+                "date": today,
+                "asking_median_ping": r["asking_median_ping"],
+                "n": r["n"],
+                "p25": r.get("p25"),
+                "p75": r.get("p75"),
+            })
+            series.sort(key=lambda p: p["date"])
+            districts[d] = series
+        hist["updated"] = today
+        payload = json.dumps(hist, ensure_ascii=False, separators=(",", ":"))
+        hist_path.write_text(payload, encoding="utf-8")
+        (WEB_ASKING_HISTORY_DIR / f"{cc}.json").write_text(payload, encoding="utf-8")
+    logger.info(f"[asking] 開價歷史已記錄 {today} → {ASKING_HISTORY_DIR}（+ 鏡像 web/public/data）")
+
+
 def build_asking(sources: tuple[str, ...] = ("singfujia",),
-                 max_pages: int = MAX_PAGES) -> None:
-    """抓開價 → 聚合 → 寫 data/asking/{cc}.json。之後跑 `realprice spread` 即生效。"""
+                 max_pages: int = MAX_PAGES, today: str | None = None) -> None:
+    """抓開價 → 聚合 → 寫 data/asking/{cc}.json + append 開價歷史。之後跑 `realprice spread` 即生效。"""
     parts = []
     src_labels = []
     if "singfujia" in sources:
@@ -252,4 +300,8 @@ def build_asking(sources: tuple[str, ...] = ("singfujia",),
         )
         total_districts += len(rows)
     logger.info(f"[asking] 完成：{total_districts} 個區有開價中位 → {ASKING_DIR}")
+
+    # 記一筆帶日期的開價歷史點（時間複利資產：每次排程跑都累積，越早開始越值錢）
+    _append_history(by_cc, today or date.today().isoformat())
+
     logger.info("[asking] 下一步：python -m realprice spread（重算議價空間）→ sync-web")

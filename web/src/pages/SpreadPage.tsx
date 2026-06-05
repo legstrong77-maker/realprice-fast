@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { data, type Meta, type SpreadRow, type SpreadSummaryRow } from "../lib/data";
+import { data, type AskingHistory, type Meta, type SpreadRow, type SpreadSummaryRow, type SpreadTrend } from "../lib/data";
 import { fmtPing } from "../lib/format";
 import Section from "../components/Section";
 import { Kpi, KpiBar } from "../components/KpiBar";
 import RoleHero from "../components/RoleHero";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 
 /** 議價空間分級（買方可砍價空間 / 賣方該預留的議價彈性）。 */
@@ -30,9 +30,48 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
   const [cc, setCc] = useState("a");
   const [nat, setNat] = useState<SpreadSummaryRow[]>([]);
   const [rows, setRows] = useState<SpreadRow[]>([]);
+  const [hist, setHist] = useState<AskingHistory | null>(null);
+  const [trend, setTrend] = useState<SpreadTrend | null>(null);
 
   useEffect(() => { data.spreadSummary().then(setNat).catch(() => setNat([])); }, []);
   useEffect(() => { data.spread(cc).then(setRows).catch(() => setRows([])); }, [cc]);
+  useEffect(() => { setHist(null); data.askingHistory(cc).then(setHist).catch(() => setHist(null)); }, [cc]);
+  useEffect(() => { setTrend(null); data.spreadTrend(cc).then(setTrend).catch(() => setTrend(null)); }, [cc]);
+
+  // 開價 vs 成交 月線（萬/坪）：成交來自實價登錄、開價來自累積抓取。
+  const trendData = useMemo(() => {
+    if (!trend) return [];
+    return trend.months.map((m, i) => ({
+      month: m,
+      成交: trend.sold[i] != null ? +(trend.sold[i]! / 10000).toFixed(1) : null,
+      開價: trend.asking[i] != null ? +(trend.asking[i]! / 10000).toFixed(1) : null,
+    }));
+  }, [trend]);
+  const hasAskingPoint = trendData.some((d) => d.開價 != null);
+
+  // 開價趨勢 + 待售量：每個抓取日，縣市各區開價中位的中位（萬/坪）+ 在架量合計（純彙總）。
+  const askingTrend = useMemo(() => {
+    if (!hist?.districts) return [];
+    const prices = new Map<string, number[]>();
+    const listings = new Map<string, number>();
+    for (const series of Object.values(hist.districts)) {
+      for (const p of series) {
+        if (p.asking_median_ping != null)
+          (prices.get(p.date) ?? prices.set(p.date, []).get(p.date)!).push(p.asking_median_ping);
+        listings.set(p.date, (listings.get(p.date) ?? 0) + (p.n ?? 0));
+      }
+    }
+    return [...prices.keys(), ...listings.keys()]
+      .filter((d, i, a) => a.indexOf(d) === i)
+      .sort((a, b) => a.localeCompare(b))
+      .map((date) => ({
+        date,
+        開價中位: prices.has(date) ? +(median(prices.get(date)!) / 10000).toFixed(1) : null,
+        在架量: listings.get(date) ?? 0,
+      }));
+  }, [hist]);
+  const latestListings = askingTrend.length ? askingTrend[askingTrend.length - 1].在架量 : null;
+  const prevListings = askingTrend.length >= 2 ? askingTrend[askingTrend.length - 2].在架量 : null;
 
   const ranked = useMemo(
     () => [...nat].filter(d => d.spread_pct != null).sort((a, b) => b.spread_pct - a.spread_pct),
@@ -56,9 +95,10 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
     <div className="space-y-6">
       <RoleHero kicker="Negotiator's Edge · 議價空間" title="開價 vs 成交：這區能砍多少？" img="/img/accent-seller.webp">
         實價登錄是<strong>成交價</strong>，售屋平台掛的是<strong>開價</strong> —— 兩者之間的落差就是
-        <span className="stat-num"> 議價空間</span>。本頁把你已有的成交中位，配合各區議價率，
-        回推「目前開價帶」與可砍價空間。<strong>對買方</strong>是出價的底氣；<strong>對賣方/業務</strong>是
-        訂牌價、抓議價彈性的依據。數字為區域中位概估，個案仍受屋況、樓層、急售與否影響。
+        <span className="stat-num"> 議價空間</span>。<strong>台南</strong>已實抓售屋平台開價（區級、含在架量與開價趨勢）；
+        其他縣市以各縣市議價率回推「目前開價帶」。<strong>對買方</strong>是出價的底氣；<strong>對賣方/業務</strong>是
+        訂牌價、抓議價彈性的依據——業務專用視角見 <a href="/broker" className="text-brass-700 underline">業務模式</a>。
+        數字為區域中位概估，個案仍受屋況、樓層、急售與否影響。
       </RoleHero>
 
       {/* 全台縣市排行 */}
@@ -119,15 +159,20 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                 <th className="text-right">開價中位（萬/坪）</th>
                 <th className="text-right">成交中位（萬/坪）</th>
                 <th className="text-right">成交量</th>
+                <th className="text-right">在架量</th>
                 <th className="text-right">來源</th>
               </tr>
             </thead>
             <tbody>
               {districts.map((r) => {
                 const t = spreadTone(r.spread_pct);
+                const thin = (r.sold_deals ?? 0) < 20;
                 return (
-                  <tr key={r.district}>
-                    <td className="font-medium text-ink-900">{r.district}</td>
+                  <tr key={r.district} className={thin ? "opacity-50" : ""}>
+                    <td className="font-medium text-ink-900">
+                      {r.district}
+                      {thin && <span className="ml-1 rounded bg-ink-200/60 px-1 py-0.5 text-[10px] text-ink-400">少量</span>}
+                    </td>
                     <td className={`text-right stat-num font-medium ${t.tone}`}>
                       {r.spread_pct != null ? `${(r.spread_pct * 100).toFixed(1)}%` : "—"}
                     </td>
@@ -135,6 +180,9 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                     <td className="text-right stat-num">{fmtPing(r.asking_median_ping)}</td>
                     <td className="text-right stat-num">{fmtPing(r.sold_median_ping)}</td>
                     <td className="text-right stat-num text-ink-500">{r.sold_deals.toLocaleString()}</td>
+                    <td className="text-right stat-num text-ink-500">
+                      {r.asking_n != null ? r.asking_n.toLocaleString() : "—"}
+                    </td>
                     <td className="text-right">
                       {r.method === "scrape"
                         ? <span className="rounded bg-up/10 px-1.5 py-0.5 text-[11px] text-up">實抓開價{r.asking_n ? `·${r.asking_n}筆` : ""}</span>
@@ -144,7 +192,7 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
                 );
               })}
               {districts.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-ink-400">此縣市暫無資料。</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-ink-400">此縣市暫無資料。</td></tr>
               )}
             </tbody>
           </table>
@@ -154,6 +202,62 @@ export default function SpreadPage({ meta }: { meta: Meta | null }) {
             議價率來源：{ccInfo.source}{ccInfo.period ? `（${ccInfo.period}）` : ""}。
             {!hasScrape && "本縣市目前以議價率回推開價（縣市級），各區共用同一議價率；待接入區級開價抓取後會自動細分。"}
           </p>
+        )}
+      </Section>
+
+      {/* 開價趨勢（領先指標）—— 隨每次排程抓取累積 */}
+      <Section
+        kicker="領先指標 · 開價 vs 成交月線"
+        title={`${ccName}：開價與成交的月度落差走勢`}
+        right={
+          <select className="input" value={cc} onChange={(e) => setCc(e.target.value)}>
+            {counties.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
+          </select>
+        }
+      >
+        {latestListings != null && latestListings > 0 && (
+          <KpiBar>
+            <Kpi label={`${ccName} 目前在架量`} value={latestListings.toLocaleString()}
+                 sub="實抓售屋平台（待售物件數）" />
+            <Kpi label="較上次變化"
+                 value={prevListings != null ? `${latestListings - prevListings >= 0 ? "+" : ""}${(latestListings - prevListings).toLocaleString()}` : "—"}
+                 sub={prevListings != null ? "vs 上一個抓取點" : "需第 2 個抓取點"}
+                 accent={prevListings != null && latestListings - prevListings > 0 ? "up" : prevListings != null && latestListings - prevListings < 0 ? "down" : undefined} />
+            <Kpi label="累積抓取點" value={`${askingTrend.length}`} sub="開價/在架歷史時間點" />
+          </KpiBar>
+        )}
+        {trendData.length > 0 ? (
+          <>
+            <div className="mt-6 h-[340px]">
+              <ResponsiveContainer>
+                <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>
+                  <CartesianGrid stroke="#e3dac8" />
+                  <XAxis dataKey="month" stroke="#a99e86" tick={{ fontSize: 11 }} minTickGap={24} />
+                  <YAxis stroke="#a99e86" width={44} tickFormatter={(v) => `${v}`} domain={["auto", "auto"]} />
+                  <Tooltip
+                    contentStyle={{ background: "#1c1813", border: "none", color: "#f8f4ec", fontSize: 12, borderRadius: 6 }}
+                    formatter={(v: any, n: any) => [`${v} 萬/坪`, n]}
+                  />
+                  <Line type="monotone" dataKey="成交" stroke="#8a7a5c" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey="開價" stroke="#b8862c" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="mt-2 text-xs text-ink-500">
+              <span className="text-[#8a7a5c]">▬ 成交中位（實價登錄，落後 1~2 月）</span>{"　"}
+              <span className="text-[#b8862c]">● 開價中位（售屋平台，當期）</span>。
+              開價是<strong>領先指標</strong>、成交是落後指標。
+              {hasAskingPoint
+                ? "開價點會隨每週排程累積成線，屆時可直接讀月度落差的擴大/收斂。"
+                : "開價線需累積抓取點，下次排程後浮現。"}
+            </p>
+          </>
+        ) : (
+          <div className="rounded-lg border border-dashed border-ink-300 bg-paper/40 px-5 py-8 text-center">
+            <p className="text-sm text-ink-700">
+              {ccName} 目前無成交月度資料可畫趨勢。本站<strong>開價深耕台南</strong>，其他縣市開價以議價率回推。
+            </p>
+          </div>
         )}
       </Section>
 

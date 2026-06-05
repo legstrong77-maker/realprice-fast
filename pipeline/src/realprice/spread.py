@@ -31,8 +31,12 @@ from .snapshot import _write
 NEGO_RATE_PATH = ROOT / "config" / "nego_rate.json"
 # Phase 2 scraper 的輸出（可選）：每縣市一檔，list[{district, asking_median_ping, n, ...}]
 ASKING_DIR = DATA_DIR / "asking"
+# 開價歷史（asking.py 累積）：每縣市一檔 {districts:{區:[{date,asking_median_ping,n,...}]}}
+ASKING_HISTORY_DIR = DATA_DIR / "asking-history"
 # 方法 A 需要的最小開價樣本數，不足就退回方法 B（議價率回推）
 MIN_ASKING_N = 5
+# 開價vs成交月線：成交回溯幾個月（開價線從有抓取的月份起點才有值）
+TREND_MONTHS = 36
 
 
 def _load_nego_rate() -> dict:
@@ -113,8 +117,82 @@ def _row_for(district: str, sold_ping: float | None, sold_deals: int,
     }
 
 
+def _county_sold_monthly(out_dir: Path, cc: str) -> dict[str, float]:
+    """把該縣市各區的 district-monthly(sale) 聚成『縣市月度成交中位』(元/坪)。
+
+    無 parquet 可用時的近似：各區月中位以『當月成交筆數加權平均』→ 縣市典型成交價趨勢。
+    """
+    mdir = out_dir / "district-monthly"
+    by_month: dict[str, list[tuple[float, int]]] = {}
+    for f in mdir.glob(f"{cc}-*-sale.json"):
+        try:
+            rows = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for r in rows:
+            mp = r.get("median_unit_price_ping")
+            mo = (r.get("month") or "")[:7]
+            if not mp or len(mo) != 7:
+                continue
+            by_month.setdefault(mo, []).append((mp, int(r.get("deals") or 0)))
+    out: dict[str, float] = {}
+    for mo, vals in by_month.items():
+        wsum = sum(d for _, d in vals)
+        out[mo] = round(sum(p * d for p, d in vals) / wsum) if wsum else round(
+            sum(p for p, _ in vals) / len(vals))
+    return out
+
+
+def _county_asking_monthly(cc: str) -> dict[str, float]:
+    """把 asking-history 的每區開價中位，依抓取月份聚成『縣市月度開價中位』(元/坪)。
+
+    同月可能有多個抓取點/多個區 → 取所有點的中位數，代表該月開價水位。
+    """
+    p = ASKING_HISTORY_DIR / f"{cc}.json"
+    if not p.exists():
+        return {}
+    try:
+        hist = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    from statistics import median as _median
+    by_month: dict[str, list[float]] = {}
+    for series in (hist.get("districts") or {}).values():
+        for pt in series:
+            mp = pt.get("asking_median_ping")
+            mo = (pt.get("date") or "")[:7]
+            if mp and len(mo) == 7:
+                by_month.setdefault(mo, []).append(mp)
+    return {mo: round(_median(vals)) for mo, vals in by_month.items() if vals}
+
+
+def build_spread_trend(out_dir: Path = SNAPSHOT_DIR) -> None:
+    """產出 spread-trend/{cc}.json = 縣市『開價 vs 成交』月線（元/坪）。
+
+    成交線來自實價登錄（豐富歷史）；開價線來自 asking-history（從開始抓取的月份才有值，
+    隨每次排程累積）。前端把兩條疊圖 → 一眼看到開價與成交的月度落差走勢。
+    """
+    n_written = 0
+    for cc in METRO_CODES:
+        sold = _county_sold_monthly(out_dir, cc)
+        if not sold:
+            continue
+        asking = _county_asking_monthly(cc)
+        months = sorted(sold.keys())[-TREND_MONTHS:]
+        # 開價若有早於成交視窗的月份也納入（通常不會），以聯集為準再排序裁切
+        all_months = sorted(set(months) | {m for m in asking if m >= (months[0] if months else "")})
+        payload = {
+            "months": all_months,
+            "sold": [sold.get(m) for m in all_months],
+            "asking": [asking.get(m) for m in all_months],
+        }
+        _write(out_dir / "spread-trend" / f"{cc}.json", payload)
+        n_written += 1
+    logger.info(f"[spread] spread-trend/* 開價vs成交月線（{n_written} 縣市有成交月資料）")
+
+
 def build_spread(out_dir: Path = SNAPSHOT_DIR) -> None:
-    """產出 spread-summary.json + spread/{cc}.json。需先跑過 build_heatmap / build_county_summary。"""
+    """產出 spread-summary.json + spread/{cc}.json + spread-trend/{cc}.json。"""
     nego = _load_nego_rate()
 
     # ── 各縣市鄉鎮明細
@@ -161,3 +239,6 @@ def build_spread(out_dir: Path = SNAPSHOT_DIR) -> None:
     nat.sort(key=lambda r: (r["spread_pct"] is None, -(r["spread_pct"] or 0)))
     _write(out_dir / "spread-summary.json", nat)
     logger.info(f"[spread] spread-summary.json + spread/* ({len(nat)} 縣市)")
+
+    # 開價 vs 成交 月線（依賴 district-monthly + asking-history）
+    build_spread_trend(out_dir)

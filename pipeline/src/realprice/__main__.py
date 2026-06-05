@@ -61,11 +61,11 @@ def cmd_spread(_args) -> None:
 
 def cmd_asking(args) -> None:
     """抓售屋平台開價 → 聚合每區開價中位（Phase 2）。抓完自動重算 spread。"""
-    from realprice.asking import build_asking
+    from realprice.asking import build_asking, MAX_PAGES
     from realprice.spread import build_spread
     from realprice.config import WEB_PUBLIC_DIR
     srcs = tuple(s.strip() for s in args.sources.split(",") if s.strip())
-    build_asking(sources=srcs, max_pages=args.max_pages)
+    build_asking(sources=srcs, max_pages=args.max_pages or MAX_PAGES)
     # 直接對 web/public/data 重算 spread（asking 會被 spread 取用 → 該區轉「實抓開價」）
     build_spread(WEB_PUBLIC_DIR)
     logger.info("已重算 spread（web/public/data）。有實抓開價的區會自動標示『實抓開價』。")
@@ -145,7 +145,8 @@ def main(argv: list[str] | None = None) -> None:
     p_ask = sub.add_parser("asking", help="抓售屋平台開價 → 每區開價中位（Phase 2）+ 重算 spread")
     p_ask.add_argument("--sources", default="singfujia",
                        help="逗號分隔來源：singfujia（已上線）, hbhousing（待定位API）")
-    p_ask.add_argument("--max-pages", type=int, default=40, help="每來源最多抓幾頁（預設 40）")
+    p_ask.add_argument("--max-pages", type=int, default=None,
+                       help="每來源最多抓幾頁（預設沿用 asking.MAX_PAGES，抓到 last_page 為止以得真實在架量）")
     p_ask.set_defaults(func=cmd_asking)
 
     p_all = sub.add_parser("all", help="build + snapshot + sync-web")
